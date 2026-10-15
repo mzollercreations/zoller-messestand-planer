@@ -12,7 +12,7 @@ import { RoomEnvironment } from '../vendor/RoomEnvironment.js';
 import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
 import { DEVICES, TOPICS, devLabel, LABEL } from './catalog.js';
 import * as G from './graphics.js';
-import { makeGrid, findPath } from './path.js';
+import { makeGrid, findPath, freePoint } from './path.js';
 
 const P = .1;                 // Höhe des Standbodens (Doppelboden/Podest)
 const EYE = 1.65;
@@ -120,7 +120,18 @@ export class Booth3D {
     this.anims = [];
     this.labelsOn = true;
     this.mode = 'orbit';
-    this.walk = { yaw: 0, pitch: 0, pos: new THREE.Vector3(), keys: new Set(), move: [0, 0], speed: 1.5, eye: EYE };
+    // Begehung: yaw/pitch folgen tYaw/tPitch gedämpft (Ziehen wirkt weich); goal = per Tippen/Klicken gewähltes Ziel
+    this.walk = { yaw: 0, pitch: 0, tYaw: 0, tPitch: 0, pos: new THREE.Vector3(), keys: new Set(), eye: EYE, goal: null, v: 0 };
+    // Zielmarke am Boden, solange man dorthin läuft: gelber Ring mit schwarzem Rand (auch auf gelben Bodenzonen sichtbar)
+    const ring = (r0, r1, hex) => {
+      const g = new THREE.RingGeometry(r0, r1, 48), c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3);
+      g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
+    };
+    const rg = [ring(.17, .2, 0x111111), ring(.2, .28, 0xf0e600), ring(.28, .31, 0x111111)];
+    this.goalMark = new THREE.Mesh(mergeGeometries(rg).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false }));
+    rg.forEach(g => g.dispose());
+    this.goalMark.visible = false; this.goalMark.renderOrder = 8; sc.add(this.goalMark);
     this.ray = new THREE.Raycaster();
     this.floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -P);
     this.bindPointer();
@@ -924,6 +935,7 @@ export class Booth3D {
     if (this.ceiling) this.ceiling.visible = m === 'walk';
     this.setHanging(m !== 'top');
     this.camera.fov = m === 'walk' ? 68 : 40; this.camera.updateProjectionMatrix();
+    this.canvas.style.cursor = m === 'walk' ? 'crosshair' : '';
     if (this.opt.onMode) this.opt.onMode(m);
     this.kick();
   }
@@ -978,19 +990,33 @@ export class Booth3D {
     for (const w of res.walls) out.push(w.r);
     return out;
   }
+  // begehbare Fläche (Layout-Koordinaten): Stand und Gänge. Hindernisse: Ausstattung, Wände, Nachbarstände
+  // (an geschlossenen Seiten direkt am Stand, an offenen hinter dem Seitengang). Gilt für Laufen, Hintippen und Rundgang
+  walkArea() {
+    const res = this.res;
+    if (this.area && this.area.res === res) return this.area;
+    const W = res.W, D = res.D, o = res.open, A = AISLE, L = 12;
+    const bounds = { x0: -L, x1: W + L, z0: o.back ? -A + .3 : 0, z1: D + A - .3 };
+    const rects = this.obstacles().slice();
+    rects.push({ x0: -L - 1, z0: -L - 1, x1: o.left ? -A + .3 : 0, z1: D });
+    rects.push({ x0: o.right ? W + A - .3 : W, z0: -L - 1, x1: W + L + 1, z1: D });
+    return (this.area = { res, bounds, rects, grids: {} });
+  }
+  // Raster für die Wegsuche (je Körperradius zwischengespeichert, neu bei jedem neuen Plan)
+  walkGrid(radius) { const a = this.walkArea(); return a.grids[radius] || (a.grids[radius] = makeGrid(a.bounds, a.rects, radius, .2)); }
   enterWalk(start) {
     if (!this.res) return;
     this.stopTour();
     this.setMode('walk');
-    const W = this.res.W, D = this.res.D;
+    const W = this.res.W, D = this.res.D, w = this.walk;
     const p = start || [W / 2, D + 3.0];
-    this.walk.pos.set(p[0], 0, p[1]); this.walk.yaw = 0; this.walk.pitch = -.05;
-    this.walk.eye = this.onBooth(p[0], p[1]) ? P + EYE : EYE;
-    this.walkGrid = null;
+    w.pos.set(p[0], 0, p[1]); w.yaw = w.tYaw = 0; w.pitch = w.tPitch = -.05;
+    w.eye = this.onBooth(p[0], p[1]) ? P + EYE : EYE;
+    w.goal = null; w.v = 0; this.goalMark.visible = false;
     this.applyWalkCam();
     this.kick();
   }
-  exitWalk() { this.walk.keys.clear(); this.walk.move = [0, 0]; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); }
+  exitWalk() { this.walk.keys.clear(); this.walk.goal = null; this.goalMark.visible = false; }
   onBooth(x, z) { return x >= 0 && x <= this.res.W && z >= 0 && z <= this.res.D; }
   applyWalkCam() {
     const w = this.walk, c = this.camera;
@@ -998,17 +1024,26 @@ export class Booth3D {
     const dir = new THREE.Vector3(-Math.sin(w.yaw) * Math.cos(w.pitch), Math.sin(w.pitch), -Math.cos(w.yaw) * Math.cos(w.pitch));
     c.lookAt(c.position.clone().add(dir));
   }
-  look(dx, dy) { const w = this.walk; w.yaw -= dx * .0032; w.pitch = clamp(w.pitch - dy * .0028, -1.2, 1.1); if (this.tour) this.stopTour(); this.applyWalkCam(); this.kick(); }
-  setMove(x, y) { this.walk.move = [x, y]; this.kick(); }
+  // Umsehen durch Ziehen wie im Showroom: das Bild folgt Finger bzw. Maus (nach rechts ziehen → Blick nach links)
+  look(dx, dy) {
+    const w = this.walk; w.tYaw += dx * .0042; w.tPitch = clamp(w.tPitch + dy * .0036, -1.1, 1.1);
+    if (this.tour) this.stopTour();
+    this.clearGoal(); this.kick();
+  }
+  // vor/zurück (Mausrad, zwei Finger auseinander/zusammen)
+  stepAhead(d) {
+    const w = this.walk; if (this.tour) this.stopTour(); this.clearGoal();
+    this.moveWithCollision(-Math.sin(w.yaw) * d, -Math.cos(w.yaw) * d); this.applyWalkCam(); this.kick();
+  }
   stepWalk(dt) {
     const w = this.walk; if (this.tour) return true;
     let f = 0, s = 0;
     const k = w.keys;
     if (k.has('KeyW') || k.has('ArrowUp')) f += 1; if (k.has('KeyS') || k.has('ArrowDown')) f -= 1;
     if (k.has('KeyA')) s -= 1; if (k.has('KeyD')) s += 1;
-    if (k.has('ArrowLeft')) { w.yaw += dt * 1.6; } if (k.has('ArrowRight')) { w.yaw -= dt * 1.6; }
-    f += -w.move[1]; s += w.move[0];
+    if (k.has('ArrowLeft')) w.tYaw += dt * 1.6; if (k.has('ArrowRight')) w.tYaw -= dt * 1.6;
     const len = Math.hypot(f, s);
+    if (len > .01) this.clearGoal();
     const target = this.onBooth(w.pos.x, w.pos.z) ? P + EYE : EYE;
     w.eye += (target - w.eye) * Math.min(1, dt * 10);
     if (len > .01) {
@@ -1017,23 +1052,124 @@ export class Booth3D {
       const mx = (fx * f + rx * s) / Math.max(1, len) * sp * dt, mz = (fz * f + rz * s) / Math.max(1, len) * sp * dt;
       this.moveWithCollision(mx, mz);
     }
+    let busy = len > .01 || Math.abs(target - w.eye) > .002;
+    if (w.goal) busy = this.stepGoal(dt) || busy;
+    // Blick weich nachführen
+    const kd = 1 - Math.exp(-14 * dt), dy = w.tYaw - w.yaw, dp = w.tPitch - w.pitch;
+    if (Math.abs(dy) > 1e-4 || Math.abs(dp) > 1e-4) { w.yaw += dy * kd; w.pitch += dp * kd; busy = true; } else { w.yaw = w.tYaw; w.pitch = w.tPitch; }
+    busy = this.stepMark(dt) || busy;
     this.applyWalkCam();
-    return len > .01 || Math.abs(target - w.eye) > .002;
+    return busy;
   }
   moveWithCollision(mx, mz) {
-    const r = .28, w = this.walk, obs = this.obstacles();
+    const r = .28, w = this.walk, a = this.walkArea(), b = a.bounds;
     const blocked = (x, z) => {
-      for (const o of obs) if (x > o.x0 - r && x < o.x1 + r && z > o.z0 - r && z < o.z1 + r) return true;
-      // Nachbarstände an geschlossenen Seiten
-      const res = this.res;
-      if (!res.open.left && x < 0 && z < res.D) return true;
-      if (!res.open.right && x > res.W && z < res.D) return true;
-      if (!res.open.back && z < 0) return true;
-      const L = 12; if (x < -L || x > res.W + L || z < -L || z > res.D + AISLE - .3) return true;
+      if (x < b.x0 || x > b.x1 || z < b.z0 || z > b.z1) return true;
+      for (const o of a.rects) if (x > o.x0 - r && x < o.x1 + r && z > o.z0 - r && z < o.z1 + r) return true;
       return false;
     };
     if (!blocked(w.pos.x + mx, w.pos.z)) w.pos.x += mx;
     if (!blocked(w.pos.x, w.pos.z + mz)) w.pos.z += mz;
+  }
+
+  // ---------------------------------------------------------------- Hintippen: dorthin gehen (wie im Showroom)
+  // Gerät, Theke, Kabine oder LED-Wand angetippt → davor stellen und hinsehen (wie beim Rundgang); Boden → genau dorthin;
+  // Wand, Möbel, Banner → kurz davor. Weg per A* um alles herum, Decke ignoriert
+  walkToPoint(e) {
+    if (!this.res) return;
+    this.ray.setFromCamera(this.ndc(e), this.cam);
+    const hits = this.ray.intersectObjects([...this.itemG.children.map(o => o.lod ? o.lod.lo : o), this.boothG, this.hallG], true);
+    let hit = null;
+    for (const h of hits) {
+      // Geräte über die (evtl. ausgeblendete) Fernfassung, alles andere nur, wenn sichtbar
+      let ceil = false, item = false, shown = true;
+      for (let q = h.object; q; q = q.parent) { if (q === this.ceiling) ceil = true; if (q.userData.uid) item = true; if (!q.visible) shown = false; }
+      if (ceil) break;
+      if (item || shown) { hit = h; break; }
+    }
+    // Geräte, Theke, Kabine, LED-Wand als Quader (Grundfläche × Höhe) treffen: großzügig für Finger, ohne Lücken im
+    // CAD und auch, solange das Modell noch lädt
+    const box = new THREE.Box3(), v = new THREE.Vector3(), ray = this.ray.ray; let best = null;
+    for (const s of this.tourStops()) {
+      const it = this.res.items.find(i => i.uid === s.uid); if (!it) continue;
+      const y0 = this.onBooth(it.x, it.z) ? P : 0;
+      box.min.set(this.ox + it.rect.x0, y0, this.oz + it.rect.z0); box.max.set(this.ox + it.rect.x1, y0 + (it.h || 1.6), this.oz + it.rect.z1);
+      if (ray.intersectBox(box, v)) { const d = v.distanceTo(ray.origin); if (!best || d < best.d) best = { d, s }; }
+    }
+    if (best && (!hit || best.d <= hit.distance + .3)) { this.goTo(best.s.at, best.s); return; }
+    if (!hit) return;
+    let o = hit.object; while (o && !o.userData.uid) o = o.parent;
+    const uid = o && o.userData.uid;
+    let x = hit.point.x - this.ox, z = hit.point.z - this.oz;
+    const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : null;
+    if (!n || Math.abs(n.y) < .7 || uid) {
+      const w = this.walk, d = Math.hypot(x - w.pos.x, z - w.pos.z);
+      if (d > .01) { const k = Math.min(.7, d) / d; x -= (x - w.pos.x) * k; z -= (z - w.pos.z) * k; }
+    }
+    this.goTo([x, z]);
+  }
+  goTo(at, stop = null) {
+    if (!this.res) return;
+    if (this.mode !== 'walk') this.enterWalk();
+    this.stopTour(); this.clearGoal();
+    const w = this.walk, g = this.walkGrid(.4);
+    const to = freePoint(g, at[0], at[1]);
+    const pts = findPath(g, [w.pos.x, w.pos.z], to);
+    let tot = 0; for (let i = 1; i < pts.length; i++) tot += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (tot < .15 && !stop) return;
+    w.goal = { pts, k: 1, phase: 'move', t: 0, sp: clamp(tot * .3, 1.4, 2.6), look: stop ? stop.look : null, h: stop ? stop.h : 1.2, label: !!(stop && (stop.label || stop.kind)) };
+    w.v = 0;
+    const m = this.goalMark; m.position.set(this.ox + to[0], (this.onBooth(to[0], to[1]) ? P : 0) + .025, this.oz + to[1]); m.visible = true; m.material.opacity = 0; m.userData.t = 0;
+    if (this.opt.onGoal) this.opt.onGoal(stop && stop.label ? { label: stop.label, uid: stop.uid } : stop && stop.kind ? { kind: stop.kind } : {});
+    this.kick();
+  }
+  clearGoal() {
+    const w = this.walk; if (!w.goal) return;
+    const g = w.goal; w.goal = null; w.v = 0; this.kick();
+    if (g.label && this.opt.onGoal) this.opt.onGoal({ cancelled: true });
+  }
+  yawTo(p) { const w = this.walk; return Math.atan2(-(p[0] - w.pos.x), -(p[1] - w.pos.z)); }
+  // Weg abgehen: sanft anlaufen und abbremsen, in Laufrichtung schauen, zum Ende hin aufs Ziel; hängt man fest → stehen bleiben
+  stepGoal(dt) {
+    const w = this.walk, g = w.goal;
+    let mix = 0;
+    if (g.phase === 'move') {
+      let wp = g.pts[g.k], dx = wp[0] - w.pos.x, dz = wp[1] - w.pos.z, d = Math.hypot(dx, dz);
+      while (d < .12 && g.k < g.pts.length - 1) { g.k++; wp = g.pts[g.k]; dx = wp[0] - w.pos.x; dz = wp[1] - w.pos.z; d = Math.hypot(dx, dz); }
+      let rem = d; for (let i = g.k + 1; i < g.pts.length; i++) rem += Math.hypot(g.pts[i][0] - g.pts[i - 1][0], g.pts[i][1] - g.pts[i - 1][1]);
+      if (g.look) mix = clamp(1 - (rem - .4) / 2.2, 0, 1);
+      if (rem < .04) { g.phase = 'turn'; g.t = 0; }
+      else {
+        w.v = Math.min(g.sp, w.v + dt * 2.8, .3 + rem * 1.7);
+        const st = Math.min(d, w.v * dt), x0 = w.pos.x, z0 = w.pos.z;
+        this.moveWithCollision(dx / d * st, dz / d * st);
+        g.stuck = Math.hypot(w.pos.x - x0, w.pos.z - z0) < st * .3 ? (g.stuck || 0) + dt : 0;
+        if (g.stuck > .35) { g.phase = 'turn'; g.t = 0; }
+        let yaw = Math.atan2(-dx, -dz);
+        if (g.look) yaw = this.lerpAngle(yaw, this.yawTo(g.look), mix);
+        w.tYaw = this.lerpAngle(w.tYaw, yaw, Math.min(1, dt * 4));
+      }
+    }
+    if (g.phase === 'turn') {
+      g.t += dt; mix = 1;
+      if (g.look) w.tYaw = this.lerpAngle(w.tYaw, this.yawTo(g.look), Math.min(1, dt * 5));
+      if (!g.look || g.t > 1) { w.goal = null; w.v = 0; if (g.label && this.opt.onGoal) this.opt.onGoal({ arrived: true }); }
+    }
+    // Neigung: zum Ziel (Geräteoberkante) bzw. beim Gehen wieder geradeaus
+    let pt = -.06;
+    if (g.look) { const dist = Math.hypot(g.look[0] - w.pos.x, g.look[1] - w.pos.z); pt = Math.atan2(g.h + (this.onBooth(w.pos.x, w.pos.z) ? P : 0) - w.eye, Math.max(.5, dist)) * mix + pt * (1 - mix); }
+    w.tPitch += (pt - w.tPitch) * Math.min(1, dt * 3);
+    return true;
+  }
+  // Zielmarke: einblenden und pulsieren, solange ein Ziel aktiv ist, danach ausblenden
+  stepMark(dt) {
+    const m = this.goalMark; if (!m.visible) return false;
+    const on = !!this.walk.goal, mt = m.material;
+    m.userData.t += dt;
+    mt.opacity = on ? Math.min(.95, mt.opacity + dt * 5) : Math.max(0, mt.opacity - dt * 3.5);
+    m.scale.setScalar(1 + .12 * Math.sin(m.userData.t * 7));
+    if (!on && mt.opacity <= 0) { m.visible = false; return false; }
+    return true;
   }
 
   // ---------------------------------------------------------------- Rundgang
@@ -1059,11 +1195,7 @@ export class Booth3D {
     if (!this.res) return;
     const res = this.res;
     this.enterWalk([res.W / 2, res.D + 2.8]);
-    const bounds = { x0: -6, z0: res.open.back ? -4 : 0, x1: res.W + 6, z1: res.D + AISLE - .4 };
-    const rects = this.obstacles().slice();
-    if (!res.open.left) rects.push({ x0: -30, z0: -30, x1: 0, z1: res.D });
-    if (!res.open.right) rects.push({ x0: res.W, z0: -30, x1: res.W + 30, z1: res.D });
-    const grid = makeGrid(bounds, rects, .42, .2);
+    const grid = this.walkGrid(.42);
     const stops = this.tourStops();
     const segs = []; let cur = [res.W / 2, res.D + 2.8];
     segs.push({ pts: [cur, [res.W / 2, res.D + 1.6]], stop: { look: [res.W / 2, res.D * .4], h: 1.6, label: null, overview: true } });
@@ -1111,6 +1243,7 @@ export class Booth3D {
     }
     const target = this.onBooth(w.pos.x, w.pos.z) ? P + EYE : EYE;
     w.eye += (target - w.eye) * Math.min(1, dt * 8);
+    w.tYaw = w.yaw; w.tPitch = w.pitch;      // bricht man den Rundgang ab, bleibt der Blick, wo er ist
     this.applyWalkCam();
   }
   lerpAngle(a, b, t) { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d * t; }
@@ -1129,11 +1262,16 @@ export class Booth3D {
   }
   bindPointer() {
     const cv = this.canvas;
-    let down = null, drag = null, lookDrag = null;
+    let down = null, drag = null;
+    // Begehung wie im Showroom (ohne Mauszeiger-Sperre → ein Esc beendet): ziehen = umsehen, tippen/klicken = dorthin
+    // gehen, zwei Finger auseinander/zusammen = vor/zurück
+    const wp = new Map(); let pinch = 0, gest = null;
     cv.addEventListener('pointerdown', (e) => {
       if (this.mode === 'walk') {
-        if (e.pointerType === 'mouse' && this.opt.pointerLock !== false && !document.pointerLockElement && e.button === 0) { try { cv.requestPointerLock(); } catch (er) { /* Safari ohne Sperre */ } }
-        lookDrag = { x: e.clientX, y: e.clientY, id: e.pointerId };
+        try { cv.setPointerCapture(e.pointerId); } catch (er) { /* synthetisches Ereignis */ }
+        wp.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (wp.size === 1) gest = { t: performance.now(), moved: 0, multi: false, button: e.button };
+        else { if (gest) gest.multi = true; const [a, b] = [...wp.values()]; pinch = Math.hypot(a.x - b.x, a.y - b.y); }
         return;
       }
       down = { x: e.clientX, y: e.clientY, t: performance.now() };
@@ -1146,7 +1284,16 @@ export class Booth3D {
       }
     });
     cv.addEventListener('pointermove', (e) => {
-      if (lookDrag && this.mode === 'walk' && !document.pointerLockElement) { this.look(e.clientX - lookDrag.x, e.clientY - lookDrag.y); lookDrag.x = e.clientX; lookDrag.y = e.clientY; return; }
+      const p = wp.get(e.pointerId);
+      if (p) {
+        const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+        if (this.mode !== 'walk' || !gest) return;
+        if (wp.size >= 2) { const [a, b] = [...wp.values()], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch) this.stepAhead((d - pinch) * .02); pinch = d; return; }
+        if (gest.multi) return;
+        gest.moved += Math.abs(dx) + Math.abs(dy);
+        if (gest.moved > 8) { this.look(dx, dy); if (e.pointerType === 'mouse') cv.style.cursor = 'grabbing'; }
+        return;
+      }
       if (drag) {
         const p = this.floorPoint(e); if (!p) return;
         const x = Math.round((p.x + drag.dx - this.ox) / .05) * .05, z = Math.round((p.z + drag.dz - this.oz) / .05) * .05;
@@ -1160,7 +1307,14 @@ export class Booth3D {
       }
     });
     const up = (e) => {
-      if (lookDrag) { lookDrag = null; return; }
+      if (wp.has(e.pointerId)) {
+        wp.delete(e.pointerId); if (wp.size < 2) pinch = 0;
+        const g = gest; if (!wp.size) gest = null;
+        if (this.mode !== 'walk') return;
+        if (e.pointerType === 'mouse') cv.style.cursor = 'crosshair';
+        if (e.type === 'pointerup' && !wp.size && g && !g.multi && g.moved <= 8 && g.button === 0 && performance.now() - g.t < 800) this.walkToPoint(e);
+        return;
+      }
       if (drag) {
         this.controls.enabled = this.mode === 'orbit'; this.oc.enabled = this.mode === 'top';
         const d = drag; drag = null;
@@ -1174,8 +1328,7 @@ export class Booth3D {
       if (this.opt.onPick) this.opt.onPick(uid || null);
     };
     cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-    document.addEventListener('mousemove', (e) => { if (document.pointerLockElement === cv && this.mode === 'walk') this.look(e.movementX, e.movementY); });
-    cv.addEventListener('wheel', (e) => { if (this.mode === 'walk') { e.preventDefault(); this.moveWithCollision(-Math.sin(this.walk.yaw) * -e.deltaY * .004, -Math.cos(this.walk.yaw) * -e.deltaY * .004); this.applyWalkCam(); this.kick(); } }, { passive: false });
+    cv.addEventListener('wheel', (e) => { if (this.mode === 'walk') { e.preventDefault(); this.stepAhead(clamp(-e.deltaY * (e.deltaMode === 1 ? 33 : 1), -200, 200) * .004); } }, { passive: false });
   }
   ndc(e) { const r = this.canvas.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); }
   pickUid(e) {

@@ -18,7 +18,9 @@ Begehung wie ein Besucher, maßstäblichen Grundriss, Planungslisten und ein **P
    (*„Wie viel Strom brauchen wir?“*, *„Was ist als Nächstes fällig?“*, *„Wie sahen unsere Stände bisher aus?“*).
 2. **3D-Stand** – Halle mit Gängen und Nachbarständen, Stand mit Wänden und Wandgrafiken, Hängebanner, Themenwürfeln,
    Produktstelen, Theke, Lager/Küche, Glaskabine, LED-Wand, Sitzgruppen; Geräte aus den CAD-Daten. Ansichten
-   *Übersicht*, *Vom Gang*, *Vogelperspektive*, **Begehen** (Maus + W A S D, am iPad Joystick + Wischen) und **Rundgang**
+   *Übersicht*, *Vom Gang*, *Vogelperspektive*, **Begehen** (wie im Showroom: hintippen/klicken = dorthin gehen – auf
+   berechnetem Weg um alles herum, ein Gerät antippen stellt einen davor –, ziehen = umsehen, zwei Finger bzw. Mausrad =
+   vor/zurück, W A S D; ohne Mauszeiger-Sperre, daher beendet **ein** Esc Begehung und Rundgang) und **Rundgang**
    (die Kamera läuft auf berechneten Wegen von Gerät zu Gerät). Teile antippen und ziehen, drehen, entfernen;
    Konflikte (Überschneidung, verstellter Bedienbereich, Tür) werden rot markiert. Bild sichern.
 3. **Grundriss** – maßstäbliche Vogelperspektive mit Nummern, Maßen, Bedienbereichen, Abhängungen und Anschlüssen

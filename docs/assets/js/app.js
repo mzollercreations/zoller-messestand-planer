@@ -354,14 +354,15 @@ $$('[data-toggle]').forEach(b => b.addEventListener('click', () => {
 function onMode(m) {
   $$('[data-views] button').forEach(b => b.classList.toggle('is-on', b.dataset.view === (m === 'orbit' ? (S.lastOrbit || 'overview') : m)));
   const wu = $('[data-walkui]'); wu.hidden = m !== 'walk';
+  clearTimeout(S.capT); $('[data-tourcap]').hidden = true;      // Rundgang blendet seine Station gleich danach ein
   if (m === 'walk') {
     $('[data-walkhint]').textContent = isTouch ? t('walk.hint.touch') : t('walk.hint.mouse');
     $('[data-walkexit]').textContent = booth.tour ? t('tour.stop') : t('walk.exit');
     clearTimeout(S.hintT); $('[data-walkhint]').hidden = false; S.hintT = setTimeout(() => { $('[data-walkhint]').hidden = true; }, 6000);
-  } else $('[data-tourcap]').hidden = true;
+  }
 }
 function onTour(info) {
-  const cap = $('[data-tourcap]');
+  const cap = $('[data-tourcap]'); clearTimeout(S.capT);
   $('[data-walkexit]').textContent = info.done || info.stopped ? t('walk.exit') : t('tour.stop');
   if (info.done) { cap.hidden = false; cap.innerHTML = esc(t('tour.done')); setTimeout(() => { cap.hidden = true; }, 2500); return; }
   if (info.stopped) { cap.hidden = true; return; }
@@ -373,23 +374,24 @@ function onTour(info) {
   const topic = it && it.kind === 'device' ? LABEL(TOPICS[DEVICES[it.ref].topic], lang()) : (S.plan.fair.name || 'ZOLLER');
   cap.hidden = false; cap.innerHTML = `<small>${esc(topic)}</small>${esc(label)}`;
 }
-$('[data-act="exitwalk"]').addEventListener('click', () => { if (booth.tour) booth.stopTour(); else setView('overview'); });
+// Begehung angetippt: Gerät, Theke, Kabine, LED-Wand beim Hingehen benennen
+function onGoal(info) {
+  const cap = $('[data-tourcap]'); clearTimeout(S.capT);
+  if (info.arrived) { S.capT = setTimeout(() => { cap.hidden = true; }, 2200); return; }
+  const label = info.label || (info.kind && t('tour.' + info.kind));
+  if (!label) { cap.hidden = true; return; }
+  const it = info.uid && S.res.items.find(i => i.uid === info.uid);
+  const topic = it && it.kind === 'device' ? LABEL(TOPICS[DEVICES[it.ref].topic], lang()) : (S.plan.fair.name || 'ZOLLER');
+  cap.hidden = false; cap.innerHTML = `<small>${esc(topic)}</small>${esc(label)}`;
+}
+// Begehung und Rundgang: Knopf und ein Druck auf Esc führen direkt zurück zur Übersicht
+$('[data-act="exitwalk"]').addEventListener('click', () => setView('overview'));
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && booth.mode === 'walk' && !document.pointerLockElement) setView('overview');
+  if (e.key === 'Escape' && booth.mode === 'walk') { e.preventDefault(); setView('overview'); return; }
   if ((e.key === 'r' || e.key === 'R') && S.selected && !/input|textarea|select/i.test(e.target.tagName) && booth.mode !== 'walk') rotateSel();
   if ((e.key === 'Delete' || e.key === 'Backspace') && S.selected && !/input|textarea|select/i.test(e.target.tagName) && booth.mode !== 'walk') removeItem(S.selected);
   if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !/input|textarea/i.test(e.target.tagName)) { e.preventDefault(); undo(); }
 });
-// Touch-Joystick für die Begehung
-(() => {
-  const joy = $('[data-joy]'), knob = joy.querySelector('i'); let id = null, c = null;
-  const set = (e) => { const r = joy.getBoundingClientRect(); const R = r.width / 2; let dx = e.clientX - (r.left + R), dy = e.clientY - (r.top + R); const l = Math.hypot(dx, dy); if (l > R) { dx *= R / l; dy *= R / l; } knob.style.transform = `translate(${dx}px, ${dy}px)`; booth.setMove(dx / R, dy / R); };
-  joy.addEventListener('pointerdown', (e) => { id = e.pointerId; joy.setPointerCapture(id); set(e); if (booth.tour) booth.stopTour(); });
-  joy.addEventListener('pointermove', (e) => { if (e.pointerId === id) set(e); });
-  const end = (e) => { if (e.pointerId !== id) return; id = null; knob.style.transform = ''; booth.setMove(0, 0); };
-  joy.addEventListener('pointerup', end); joy.addEventListener('pointercancel', end);
-  void c;
-})();
 
 // Auswahl
 function select(uid) {
@@ -647,7 +649,7 @@ applyLang(store.get('lang', 'de'));     // ZOLLER-intern: Deutsch zuerst, Englis
 booth = new Booth3D($('[data-stage]'), {
   base: '', editable: true, lang: lang(),
   onPick: (uid) => select(uid), onMove: (uid, x, z) => { const it = S.res.items.find(i => i.uid === uid); moveItem(uid, x, z, it ? it.rot : 0); },
-  onMode, onTour,
+  onMode, onTour, onGoal,
 });
 window.ZMSP = { S, booth, assistant, solve, effPlan, moveItem, select, removeItem, undo };
 

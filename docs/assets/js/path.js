@@ -30,6 +30,13 @@ function nearestFree(g, i, j) {
   return [i, j];
 }
 
+// Zielpunkt fürs Hintippen: liegt er frei, genau dort, sonst Mitte der nächsten freien Zelle
+export function freePoint(g, x, z) {
+  const [i, j] = cellOf(g, x, z), [fi, fj] = nearestFree(g, i, j), b = g.bounds;
+  if (fi === i && fj === j && x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1) return [x, z];
+  return center(g, fi, fj);
+}
+
 function lineFree(g, a, b) {
   const d = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.ceil(d / (g.cell * .5));
   for (let s = 0; s <= n; s++) {

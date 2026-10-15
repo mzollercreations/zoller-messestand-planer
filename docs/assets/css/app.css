@@ -137,13 +137,11 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round
 .empty p { margin: 0; color: var(--ink2); font-size: .9rem; line-height: 1.5; }
 .walkui { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
 .walkui > * { pointer-events: auto; }
-.walkui__hint { position: absolute; left: 50%; bottom: 1.2rem; transform: translateX(-50%); background: rgba(0, 0, 0, .78); color: #fff; padding: .55rem 1rem; border-radius: 999px; font-size: .8rem; white-space: nowrap; pointer-events: none; }
+.walkui__hint { position: absolute; left: 50%; bottom: 1.2rem; transform: translateX(-50%); width: max-content; max-width: calc(100% - 2rem); text-align: center; background: rgba(0, 0, 0, .78); color: #fff; padding: .55rem 1rem; border-radius: 999px; font-size: .8rem; pointer-events: none; }
+@media (max-width: 900px) { .walkui__hint { bottom: 4.3rem; } }
 .walkui__cap { position: absolute; left: 50%; top: 4.6rem; transform: translateX(-50%); background: #000; color: #fff; padding: .7rem 1.2rem; border-radius: 14px; font-size: 1rem; font-weight: 700; box-shadow: var(--shadow); white-space: nowrap; pointer-events: none; animation: up .35s var(--ease); }
 .walkui__cap small { display: block; font-weight: 400; font-size: .74rem; color: var(--yellow); }
 .walkui__exit { position: absolute; right: 1rem; bottom: 1rem; }
-.joy { position: absolute; left: 1.4rem; bottom: 1.4rem; width: 130px; height: 130px; border-radius: 50%; background: rgba(0, 0, 0, .25); border: 2px solid rgba(255, 255, 255, .5); display: none; touch-action: none; }
-.joy i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px; border-radius: 50%; background: var(--yellow); box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
-.is-touch .joy { display: block; }
 .selbar { position: absolute; left: 50%; bottom: 1.1rem; transform: translateX(-50%); display: flex; align-items: center; gap: .4rem; background: #fff; border-radius: 999px; padding: .35rem .4rem .35rem 1rem; box-shadow: var(--shadow); z-index: 6; max-width: calc(100% - 2rem); }
 .selbar b { font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .selbar small { color: var(--red); font-size: .74rem; max-width: 16rem; line-height: 1.2; }
