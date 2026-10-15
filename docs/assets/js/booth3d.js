@@ -267,7 +267,7 @@ export class Booth3D {
     const k = cam.isOrthographicCamera ? hpx * cam.zoom / (cam.top - cam.bottom) : hpx / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2));
     const v = this._v || (this._v = new THREE.Vector3());
     for (const o of this.items.values()) {
-      const L = o.userData.lod; if (!L) continue;
+      const L = o.lod; if (!L) continue;
       let px = 2 * L.r * k;
       if (!cam.isOrthographicCamera) px /= Math.max(.2, cam.position.distanceTo(v.set(o.position.x, o.position.y + L.cy, o.position.z)));
       const want = force || px > (L.on ? 190 : 240);
@@ -276,7 +276,7 @@ export class Booth3D {
     }
   }
   loadHi(o) {
-    const L = o.userData.lod;
+    const L = o.lod;
     if (!L.loading) {
       L.loading = this.template(L.cad).then((t) => {
         if (!t || L.hi) return;
@@ -287,7 +287,7 @@ export class Booth3D {
     }
     return L.loading;
   }
-  prefetchHi() { for (const o of this.items.values()) if (o.userData.lod) this.loadHi(o); }
+  prefetchHi() { for (const o of this.items.values()) if (o.lod) this.loadHi(o); }
 
   canvasTex(key, make) {
     if (this.texCache.has(key)) return this.texCache.get(key);
@@ -746,7 +746,8 @@ export class Booth3D {
       if (lo) {
         obj = new THREE.Group(); const l = lo.clone(); obj.add(l);
         const h = it.h || 1.5;
-        obj.userData.lod = { cad: c.cad, lo: l, hi: null, on: false, r: .5 * Math.hypot(it.w || 1, it.d || 1, h), cy: h / 2 };
+        // Detailstufen als Eigenschaft, nicht in userData (clone() kopiert userData per JSON – mit Modellen darin viel zu groß)
+        obj.lod = { cad: c.cad, lo: l, hi: null, on: false, r: .5 * Math.hypot(it.w || 1, it.d || 1, h), cy: h / 2 };
       } else if (c.cad) { const t = await this.template(c.cad); obj = t ? t.clone() : this.photoDevice(it.ref); }
       else if (c.station) obj = await this.stationDevice(it.ref);
       else obj = this.photoDevice(it.ref);
@@ -755,7 +756,7 @@ export class Booth3D {
     obj.traverse(m => { if (m.isMesh) m.userData.uid = it.uid; });
     o.add(obj);
     if (obj.userData.board) o.userData.board = obj.userData.board;
-    if (obj.userData.lod) o.userData.lod = obj.userData.lod;
+    if (obj.lod) o.lod = obj.lod;
     this.shadowsDirty(); this.kick();
   }
 
@@ -1104,7 +1105,7 @@ export class Booth3D {
   pickUid(e) {
     this.ray.setFromCamera(this.ndc(e), this.cam);
     // Geräte mit Detailstufen gegen die Fernfassung prüfen: für die Auswahl genau genug, bis zu 10× weniger Dreiecke
-    const hits = this.ray.intersectObjects(this.itemG.children.map(o => o.userData.lod ? o.userData.lod.lo : o), true);
+    const hits = this.ray.intersectObjects(this.itemG.children.map(o => o.lod ? o.lod.lo : o), true);
     for (const h of hits) { let o = h.object; while (o && !o.userData.uid) o = o.parent; if (o) return o.userData.uid; }
     return null;
   }
@@ -1137,7 +1138,7 @@ export class Booth3D {
   // view: overview | front | left | right | iso | top | eye; liefert JPEG-DataURL
   async snapshot(view, w = 1800, h = 1100, opt = {}) {
     if (!this.res) return null;
-    await Promise.all([...this.items.values()].filter(o => o.userData.lod).map(o => this.loadHi(o)));     // fürs PDF volle Modelle
+    await Promise.all([...this.items.values()].filter(o => o.lod).map(o => this.loadHi(o)));     // fürs PDF volle Modelle
     const r = this.renderer;
     const prevSize = r.getSize(new THREE.Vector2()), prevPR = r.getPixelRatio();
     const W = this.res.W, D = this.res.D, S = Math.max(W, D);

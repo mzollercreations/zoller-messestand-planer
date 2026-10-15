@@ -3,7 +3,7 @@
 
 - docs/data/fairs.json: kommende Messen aus der ZOLLER-Eventliste (zoller-webseite/content/events.json, kind = fair)
 - Modelle/Bilder: gleicht docs/models, docs/img mit dem Werkzeugraum-Planer ab (dort entstehen die Web-Modelle aus
-  den offiziellen CAD-Daten: tools/build_models.py), falls dort neuere Dateien liegen
+  den offiziellen CAD-Daten: tools/build_models.py, Fernfassungen tools/build_lod.py), falls dort neuere Dateien liegen
 - versioniert die Module im Import-Map (Cache der Browser nach Änderungen)
 """
 import datetime, hashlib, json, pathlib, re, shutil
@@ -47,7 +47,8 @@ def sync_models():
             t = b / f.relative_to(a)
             if not t.exists() or f.stat().st_mtime > t.stat().st_mtime + 1:
                 t.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(f, t); n += 1
-    for a, b in [(PLANER / "data" / "models.json", DOCS / "models" / "models.json"), (PLANER / "data" / "aspects.json", DOCS / "img" / "aspects.json")]:
+    for a, b in [(PLANER / "data" / "models.json", DOCS / "models" / "models.json"), (PLANER / "data" / "lod.json", DOCS / "models" / "lod.json"),
+                 (PLANER / "data" / "aspects.json", DOCS / "img" / "aspects.json")]:
         if a.exists() and (not b.exists() or a.read_bytes() != b.read_bytes()):
             shutil.copy2(a, b); n += 1
     print(f"Modelle/Bilder: {n} Dateien aktualisiert")
