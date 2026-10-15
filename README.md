@@ -59,6 +59,11 @@ Der Planer baut jeden Stand in diesem Design; Farben nur Gelb, Anthrazit/Schwarz
 - **Anschlusswerte und Gewichte** nur mit Quelle (ZOLLER-Webseite): »powerShrink 400« 400 V 3~/N/PE, 15 kVA, 6–8 bar;
   »redomatic 600« 13 kVA; »toolBalancer« ~740 kg; »genius« ~820 kg; »titan« ~1400 kg; »hobCheck« 542 kg. Alles andere
   steht als „lt. Datenblatt prüfen“ in den Listen. CEE-Größe aus kVA (I = S / (√3 · 400 V)).
+- **3D-Leistung** (Handy/iPad): Gezeichnet wird nur, solange sich etwas bewegt; verdeckt (Chat, Grundriss, Listen) gar
+  nicht. In Bewegung passt sich die Auflösung der Bildrate an, das stehende Bild ist wieder voll scharf. Geräte haben eine
+  leichte Fernfassung (`docs/models/lod`, `tools/build_lod.py`), bis sie groß im Bild sind; fürs PDF immer die volle.
+  »redomatic 600«, »toolBalancer«, »powerShrink 400« haben keine (ihre CAD-Netze zerfallen beim Vereinfachen). Je Gerät
+  zwei Draw-Calls (Materialklassen als Vertex-Attribute), Halle und Personen als Instanzen.
 - **Zeitplan** ist ein Vorschlag (übliche Vorläufe); Fristen aus dem Ausstellerhandbuch der Messe haben Vorrang.
 - Messen für die Schnellauswahl: kommende Messen aus `zoller-webseite/content/events.json` + große Fachmessen.
 
@@ -94,6 +99,7 @@ Der Server gehört auf ZOLLER-Infrastruktur (keine Cloudflare-/Fremd-Hostings).
 | `docs/assets/js/pdf.js` | PDF-Erstellung (jsPDF 2.5.2, T-Star eingebettet) |
 | `server/` | optionaler KI-Server (Python, Docker) |
 | `tools/build.py` | Messen aus der Eventliste, Modelle abgleichen, Server-Katalog, Versionierung der Module |
+| `tools/build_lod.py` | Fernfassungen der CAD-Geräte (Pipeline des Werkzeugraum-Planers, kleineres Budget, je Gerät per Sichtvergleich eingestellt) |
 
 ## Prüfen
 

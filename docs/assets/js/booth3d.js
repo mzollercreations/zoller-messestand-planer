@@ -9,6 +9,7 @@ import { OrbitControls } from '../vendor/OrbitControls.js';
 import { GLTFLoader } from '../vendor/GLTFLoader.js';
 import { DRACOLoader } from '../vendor/DRACOLoader.js';
 import { RoomEnvironment } from '../vendor/RoomEnvironment.js';
+import { mergeGeometries } from '../vendor/BufferGeometryUtils.js';
 import { DEVICES, TOPICS, devLabel, LABEL } from './catalog.js';
 import * as G from './graphics.js';
 import { makeGrid, findPath } from './path.js';
@@ -49,8 +50,12 @@ export class Booth3D {
     this.canvas = el.querySelector('canvas');
     this.labelLayer = el.querySelector('[data-labels]');
     this.loop = this.loop.bind(this);
+    this.touch = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    this.pr = Math.min(window.devicePixelRatio || 1, 2); r.setPixelRatio(this.pr);
+    // Auflösung: im Stillstand volle Schärfe (prMax), in Bewegung ein Pixelbudget, das sich der Bildrate anpasst (adapt)
+    this.prMax = Math.min(window.devicePixelRatio || 1, 2);
+    this.motionPx = this.touch ? 9e5 : 2.2e6;
+    this.pr = this.prMax; r.setPixelRatio(this.pr);
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = .95;
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.shadowMap.autoUpdate = false;
     this.aniso = r.capabilities.getMaxAnisotropy();
@@ -61,7 +66,7 @@ export class Booth3D {
     sc.environment = pm.fromScene(new RoomEnvironment(), .04).texture; sc.environmentIntensity = .7;
     sc.add(new THREE.HemisphereLight(0xffffff, 0xcbc6be, .9));
     const sun = this.sun = new THREE.DirectionalLight(0xfff6ea, 1.9);
-    sun.castShadow = true; const sm = window.innerWidth > 900 ? 4096 : 2048; sun.shadow.mapSize.set(sm, sm);
+    sun.castShadow = true; const sm = window.innerWidth > 900 && !this.touch ? 4096 : 2048; sun.shadow.mapSize.set(sm, sm);
     sun.shadow.bias = -.0004; sun.shadow.normalBias = .03;
     sc.add(sun, sun.target);
     const fill = new THREE.DirectionalLight(0xffffff, .45); fill.position.set(-20, 15, 25); sc.add(fill);
@@ -80,7 +85,9 @@ export class Booth3D {
     this.gltf = new GLTFLoader(); this.gltf.setDRACOLoader(draco);
     this.texLoader = new THREE.TextureLoader();
     this.lib = {};
-    for (const [k, v] of Object.entries(CLS)) this.lib[k] = new THREE.MeshPhysicalMaterial({ ...v, color: new THREE.Color(v.color), ...(v.emissive ? { emissive: new THREE.Color(v.emissive) } : {}), side: THREE.DoubleSide });
+    // Klarlack braucht den teureren Physical-Shader; alle anderen Klassen sehen mit Standard gleich aus
+    // (CAD-Flächen sind nicht einheitlich orientiert → zweiseitig)
+    for (const [k, v] of Object.entries(CLS)) this.lib[k] = new (v.clearcoat ? THREE.MeshPhysicalMaterial : THREE.MeshStandardMaterial)({ ...v, color: new THREE.Color(v.color), ...(v.emissive ? { emissive: new THREE.Color(v.emissive) } : {}), side: THREE.DoubleSide });
     this.mat = {
       black: new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: .7 }),
       black2: new THREE.MeshStandardMaterial({ color: 0x232527, roughness: .45, metalness: .2 }),
@@ -128,57 +135,164 @@ export class Booth3D {
   }
 
   // ---------------------------------------------------------------- Rendering
-  kick(ms = 900) { this.until = Math.max(this.until || 0, performance.now() + ms); if (!this.raf) this.raf = requestAnimationFrame(this.loop); }
+  // Gezeichnet wird nur, solange sich etwas bewegt (Kamera, Animation, Begehung) – danach steht das Bild
+  kick(ms = 300) { this.until = Math.max(this.until || 0, performance.now() + ms); if (!this.raf) this.raf = requestAnimationFrame(this.loop); }
   resize() {
     const w = this.el.clientWidth, h = this.el.clientHeight; if (!w || !h) return;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
     this.fitOrtho(); this.kick();
   }
+  // verdeckt (Handy: Chat liegt darüber; Grundriss, Listen) → nicht zeichnen; setTab ruft beim Zurückwechseln resize()
+  shown() {
+    const e = this.el; if (!e.clientWidth || !e.clientHeight) return false;
+    return e.checkVisibility ? e.checkVisibility({ visibilityProperty: true }) : true;
+  }
   loop() {
     this.raf = 0;
     const dt = Math.min(.05, this.clock.getDelta());
     const now = performance.now();
+    if (!this.shown()) { this.frameT = 0; return; }
     let busy = false;
     if (this.camAnim) { busy = true; this.stepCam(now); }
     if (this.anims.length) { busy = true; this.anims = this.anims.filter(a => a.step(now)); }
     if (this.mode === 'walk') { busy = this.stepWalk(dt) || busy; }
     if (this.tour) { busy = true; this.stepTour(dt); }
-    if (this.mode === 'orbit') this.controls.update(); else if (this.mode === 'top') this.oc.update();
+    if (this.mode === 'orbit') { if (this.controls.update()) busy = true; } else if (this.mode === 'top') { if (this.oc.update()) busy = true; }
+    const more = busy || now < this.until;
+    this.adapt(now, more);
     this.facePhotos();
+    this.updateLod();
     this.renderer.render(this.scene, this.cam);
     if (this.labelsOn) this.updateLabels();
-    if (busy || now < this.until || this.mode === 'walk') this.raf = requestAnimationFrame(this.loop);
+    if (more) this.raf = requestAnimationFrame(this.loop);
+  }
+  // Pixelverhältnis: in Bewegung so viele Pixel, wie das Gerät flüssig schafft (gemessen an der Bildrate), das letzte
+  // Bild einer Bewegung wieder in voller Schärfe
+  adapt(now, moving) {
+    let pr = this.prMax;
+    if (moving) {
+      if (this.frameT) {
+        const ft = now - this.frameT;
+        this.ftAvg = this.ftAvg ? this.ftAvg * .88 + ft * .12 : ft;
+        this.ftN = (this.ftN || 0) + 1;
+        const full = this.el.clientWidth * this.el.clientHeight * this.prMax * this.prMax;
+        if (this.ftN > 12 && this.ftAvg > 26 && this.motionPx > 1.6e5) { this.motionPx *= .72; this.ftN = 0; }
+        else if (this.ftN > 90 && this.ftAvg < 18 && this.motionPx < full) { this.motionPx *= 1.2; this.ftN = 0; }
+      }
+      this.frameT = now;
+      pr = clamp(Math.sqrt(this.motionPx / Math.max(1, this.el.clientWidth * this.el.clientHeight)), Math.min(.7, this.prMax), this.prMax);
+    } else this.frameT = 0;
+    if (Math.abs(pr - this.pr) > .05) { this.pr = pr; this.renderer.setPixelRatio(pr); }
   }
 
   // ---------------------------------------------------------------- Modelle
-  async template(cad) {
-    if (this.templates.has(cad)) return this.templates.get(cad);
+  // lo: leichte Fernfassung (docs/models/lod, tools/build_lod.py) – gleiche Lage und Materialklassen wie die volle
+  async template(cad, lo = false) {
+    const key = lo ? cad + '@lo' : cad;
+    if (this.templates.has(key)) return this.templates.get(key);
     const p = (async () => {
       const man = this.opt.models && this.opt.models[cad]; if (!man) return null;
-      const g = await this.gltf.loadAsync(this.base + man.file);
-      const obj = g.scene; let scr = null;
+      const g = await this.gltf.loadAsync(this.base + (lo ? this.opt.lod[cad].file : man.file));
+      const obj = g.scene; const pack = [];
       obj.traverse((o) => {
         if (!o.isMesh) return;
         const cls = (o.material.name || '').replace('zc_', '');
-        if (cls === 'screen' && man.screen) {
-          if (!scr) {
-            const t = this.texLoader.load(this.base + man.screen, () => this.kick()); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = this.aniso;
-            scr = new THREE.MeshBasicMaterial({ map: t, toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
-          }
-          o.material = scr; o.castShadow = false;
-        } else { o.material = this.lib[cls] || this.lib.darkgrey; o.castShadow = true; }
+        if (cls === 'screen' && man.screen) { o.material = this.screenMat(man.screen); o.castShadow = false; }
+        else if (CLS[cls] && CLS[cls].emissive) { o.material = this.lib[cls]; o.castShadow = true; }
+        else pack.push([o, CLS[cls] ? cls : 'darkgrey']);
         o.receiveShadow = true;
       });
+      this.packClasses(obj, pack);
       // auf den Boden stellen und mittig ausrichten
       const bb = new THREE.Box3().setFromObject(obj);
       const wrap = new THREE.Group(); wrap.add(obj);
       obj.position.set(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
       return wrap;
-    })().catch((e) => { console.warn('Modell', cad, e); return null; });
-    this.templates.set(cad, p);
+    })().catch((e) => { console.warn('Modell', key, e); return null; });
+    this.templates.set(key, p);
     return p;
   }
+  screenMat(file) {
+    const m = this.scrMats || (this.scrMats = new Map());
+    if (!m.has(file)) {
+      const t = this.texLoader.load(this.base + file, () => this.kick()); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = this.aniso;
+      m.set(file, new THREE.MeshBasicMaterial({ map: t, toneMapped: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
+    }
+    return m.get(file);
+  }
+
+  // Ein Mesh je Materialfamilie statt eines je Klasse (bis zu 23 Draw-Calls je Gerät → 2): Farbe, Rauheit, Metall und
+  // Klarlack der Klasse (CLS) stehen als Vertex-Attribute am Mesh, der Shader liest sie statt der Materialwerte
+  packClasses(obj, pack) {
+    if (!pack.length) return;
+    obj.updateMatrixWorld(true);
+    const fam = { std: [], cc: [] }, c = new THREE.Color();
+    for (const [o, cls] of pack) {
+      const v = CLS[cls], src = o.geometry, gm = new THREE.BufferGeometry();
+      const n = src.attributes.position.count;
+      gm.setAttribute('position', src.attributes.position.clone()); gm.setAttribute('normal', src.attributes.normal.clone());
+      gm.setIndex(src.index ? src.index.clone() : [...Array(n).keys()]);
+      gm.applyMatrix4(o.matrixWorld);
+      const col = new Float32Array(n * 3), rmc = new Float32Array(n * 4), r4 = [v.roughness, v.metalness || 0, v.clearcoat || 0, v.clearcoatRoughness || 0];
+      c.set(v.color);
+      for (let i = 0; i < n; i++) { col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b; rmc[i * 4] = r4[0]; rmc[i * 4 + 1] = r4[1]; rmc[i * 4 + 2] = r4[2]; rmc[i * 4 + 3] = r4[3]; }
+      gm.setAttribute('color', new THREE.BufferAttribute(col, 3)); gm.setAttribute('rmc', new THREE.BufferAttribute(rmc, 4));
+      fam[v.clearcoat ? 'cc' : 'std'].push(gm);
+      o.removeFromParent(); src.dispose();
+    }
+    for (const [k, list] of Object.entries(fam)) {
+      if (!list.length) continue;
+      const m = new THREE.Mesh(mergeGeometries(list), this.packMat(k)); m.castShadow = true; m.receiveShadow = true; obj.add(m);
+      for (const x of list) x.dispose();
+    }
+  }
+  packMat(k) {
+    const pm = this.packMats || (this.packMats = {});
+    if (pm[k]) return pm[k];
+    const m = k === 'cc' ? new THREE.MeshPhysicalMaterial({ vertexColors: true, clearcoat: 1, side: THREE.DoubleSide })
+      : new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide });
+    m.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec4 rmc;\nvarying vec4 vRmc;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRmc = rmc;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec4 vRmc;')
+        .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = vRmc.x;')
+        .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = vRmc.y;')
+        .replace('#include <lights_physical_fragment>', THREE.ShaderChunk.lights_physical_fragment
+          .replace('material.clearcoat = clearcoat;', 'material.clearcoat = vRmc.z;')
+          .replace('material.clearcoatRoughness = clearcoatRoughness;', 'material.clearcoatRoughness = vRmc.w;'));
+    };
+    m.customProgramCacheKey = () => 'zc-pack-' + k;
+    return (pm[k] = m);
+  }
+
+  // Detailstufe je Gerät: Fernfassung, bis es groß im Bild ist (Pixelhöhe der Hüllkugel); die volle Fassung wird erst
+  // dann geladen (am Desktop vorab im Leerlauf). force: alle voll (PDF-Bilder).
+  updateLod(force = false, cam = this.cam, hpx = this.el.clientHeight || 1) {
+    const k = cam.isOrthographicCamera ? hpx * cam.zoom / (cam.top - cam.bottom) : hpx / (2 * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2));
+    const v = this._v || (this._v = new THREE.Vector3());
+    for (const o of this.items.values()) {
+      const L = o.userData.lod; if (!L) continue;
+      let px = 2 * L.r * k;
+      if (!cam.isOrthographicCamera) px /= Math.max(.2, cam.position.distanceTo(v.set(o.position.x, o.position.y + L.cy, o.position.z)));
+      const want = force || px > (L.on ? 190 : 240);
+      if (want && !L.hi) { this.loadHi(o); continue; }
+      if (L.hi && L.on !== want) { L.on = want; L.hi.visible = want; L.lo.visible = !want; }
+    }
+  }
+  loadHi(o) {
+    const L = o.userData.lod;
+    if (!L.loading) {
+      L.loading = this.template(L.cad).then((t) => {
+        if (!t || L.hi) return;
+        const hi = t.clone(); hi.visible = false;
+        hi.traverse(m => { if (m.isMesh) m.userData.uid = o.userData.uid; });
+        L.lo.parent.add(hi); L.hi = hi; this.kick();
+      });
+    }
+    return L.loading;
+  }
+  prefetchHi() { for (const o of this.items.values()) if (o.userData.lod) this.loadHi(o); }
 
   canvasTex(key, make) {
     if (this.texCache.has(key)) return this.texCache.get(key);
@@ -389,8 +503,9 @@ export class Booth3D {
   slogan() { return (this.plan && this.plan.signage && this.plan.signage.slogan) || 'Erfolg ist messbar'; }
 
   // ---------------------------------------------------------------- Halle (Boden, Gänge, Nachbarn, Decke)
+  // Halle: wenige Draw-Calls – Nachbarstände je Material zu einem Mesh zusammengefasst, Träger und Leuchten als Instanzen
   buildHall(W, D, open, hallH) {
-    const g = this.hallG; while (g.children.length) g.remove(g.children[0]);
+    const g = this.hallG; this.disposeGroup(g); while (g.children.length) g.remove(g.children[0]);
     const S = Math.max(W, D) + 60;
     const fl = new THREE.Mesh(new THREE.PlaneGeometry(S * 2, S * 2), this.mat.hallFloor); fl.rotation.x = -Math.PI / 2; fl.receiveShadow = true; g.add(fl);
     // Gangteppich um den Stand
@@ -401,13 +516,14 @@ export class Booth3D {
     if (open.left) aisle(-hw - A, -hd - (open.back ? A : 0) - 30, -hw, hd);
     if (open.right) aisle(hw, -hd - (open.back ? A : 0) - 30, hw + A, hd);
     // Nachbarstände: einfache weiße Bauten mit Rückwänden, gegenüber am Gang ebenso
+    const parts = { floor: [], neighbor: [], neighbor2: [] };
+    const boxAt = (list, w, h, d, x, y, z) => { const b = new THREE.BoxGeometry(w, h, d); b.translate(x, y, z); list.push(b); };
     const nb = (x0, z0, x1, z1, h = 2.5, face = null) => {
       const w = x1 - x0, d = z1 - z0; if (w <= .2 || d <= .2) return;
-      const fl2 = new THREE.Mesh(new THREE.PlaneGeometry(w, d), this.mat.neighbor2); fl2.rotation.x = -Math.PI / 2; fl2.position.set((x0 + x1) / 2, .006, (z0 + z1) / 2); g.add(fl2);
-      const ng = new THREE.Group(); ng.userData.neighbor = true; g.add(ng);
+      const fl2 = new THREE.PlaneGeometry(w, d); fl2.rotateX(-Math.PI / 2); fl2.translate((x0 + x1) / 2, .006, (z0 + z1) / 2); parts.floor.push(fl2);
       // Rückwand an der dem Gang abgewandten Seite + einige Körper
       const t = .1;
-      const wall = (x, z, ww, dd) => { const m = new THREE.Mesh(new THREE.BoxGeometry(ww, h, dd), this.mat.neighbor); m.position.set(x, h / 2, z); m.castShadow = true; m.receiveShadow = true; ng.add(m); };
+      const wall = (x, z, ww, dd) => boxAt(parts.neighbor, ww, h, dd, x, h / 2, z);
       if (face === 'south') wall((x0 + x1) / 2, z0 + t / 2, w, t);
       if (face === 'north') wall((x0 + x1) / 2, z1 - t / 2, w, t);
       if (face === 'east') wall(x0 + t / 2, (z0 + z1) / 2, t, d);
@@ -417,7 +533,7 @@ export class Booth3D {
       for (let i = 0; i < n; i++) {
         const bw = .8 + rnd() * 1.6, bd = .6 + rnd() * 1.2, bh = .9 + rnd() * 1.3;
         const x = x0 + .8 + bw / 2 + rnd() * Math.max(0, w - bw - 1.6), z = z0 + .8 + bd / 2 + rnd() * Math.max(0, d - bd - 1.6);
-        const m = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), rnd() < .5 ? this.mat.neighbor : this.mat.neighbor2); m.position.set(x, bh / 2, z); m.castShadow = true; m.receiveShadow = true; ng.add(m);
+        boxAt(rnd() < .5 ? parts.neighbor : parts.neighbor2, bw, bh, bd, x, bh / 2, z);
       }
     };
     const ND = 8;    // Tiefe der Nachbarstände
@@ -426,14 +542,27 @@ export class Booth3D {
     if (!open.left) nb(-hw - 12, -hd, -hw, hd, 2.5, 'east'); else nb(-hw - A - ND, -hd - 6, -hw - A, hd, 2.5, 'west');
     if (!open.right) nb(hw, -hd, hw + 12, hd, 2.5, 'west'); else nb(hw + A, -hd - 6, hw + A + ND, hd, 2.5, 'east');
     if (!open.back) nb(-hw - 4, -hd - ND, hw + 4, -hd, 2.5, 'south'); else nb(-hw - 14, -hd - A - ND, hw + 14, -hd - A, 2.5, 'south');
+    if (parts.floor.length) g.add(new THREE.Mesh(mergeGeometries(parts.floor), this.mat.neighbor2));
+    for (const k of ['neighbor', 'neighbor2']) {
+      if (!parts[k].length) continue;
+      const m = new THREE.Mesh(mergeGeometries(parts[k]), this.mat[k]); m.castShadow = true; m.receiveShadow = true; m.userData.neighbor = true; g.add(m);
+    }
+    for (const list of Object.values(parts)) for (const x of list) x.dispose();
     // Hallendecke mit Tragwerk und Leuchten (von unten sichtbar, von oben durchsichtig)
     const cg = new THREE.Group(); cg.name = 'ceiling'; g.add(cg);
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(S * 2, S * 2), this.mat.ceiling); ceil.rotation.x = Math.PI / 2; ceil.position.y = hallH; cg.add(ceil);
-    const lampMat = new THREE.MeshBasicMaterial({ color: 0xfffbf0 });
-    for (let x = -S / 2; x <= S / 2; x += 8) {
-      const beam = new THREE.Mesh(new THREE.BoxGeometry(.3, .6, S), this.mat.ceiling); beam.position.set(x, hallH - .3, 0); cg.add(beam);
-      for (let z = -S / 2; z <= S / 2; z += 6) { const l = new THREE.Mesh(new THREE.CylinderGeometry(.35, .35, .08, 20), lampMat); l.position.set(x + 4, hallH - .7, z); cg.add(l); }
-    }
+    const lampMat = this.lampMat || (this.lampMat = new THREE.MeshBasicMaterial({ color: 0xfffbf0 }));
+    const xs = [], zs = [];
+    for (let x = -S / 2; x <= S / 2; x += 8) xs.push(x);
+    for (let z = -S / 2; z <= S / 2; z += 6) zs.push(z);
+    const beams = new THREE.InstancedMesh(new THREE.BoxGeometry(.3, .6, S), this.mat.ceiling, xs.length);
+    const lamps = new THREE.InstancedMesh(new THREE.CylinderGeometry(.35, .35, .08, 16), lampMat, xs.length * zs.length);
+    const M = new THREE.Matrix4(); let n = 0;
+    xs.forEach((x, i) => {
+      beams.setMatrixAt(i, M.makeTranslation(x, hallH - .3, 0));
+      for (const z of zs) lamps.setMatrixAt(n++, M.makeTranslation(x + 4, hallH - .7, z));
+    });
+    cg.add(beams, lamps);
     this.ceiling = cg;
     this.hallKey = [W, D, open.left, open.right, open.back, hallH].join('|');
   }
@@ -611,13 +740,20 @@ export class Booth3D {
     if (!this.viewed) { this.viewed = true; this.view('overview', true); }
     else if (resized && this.mode === 'orbit' && !this.tour) this.view(this.lastView || 'overview');
     this.kick(1200);
+    // Desktop: volle Modelle im Leerlauf vorladen (kein Aufpoppen beim Heranzoomen); Handy/Tablet: erst bei Bedarf
+    if (!this.touch) { clearTimeout(this.prefetchT); this.prefetchT = setTimeout(() => Promise.all([...(this.fills || [])]).then(() => this.prefetchHi()), 1500); }
   }
 
   async fillItem(o, it, token) {
     let obj = null;
     if (it.kind === 'device') {
       const c = DEVICES[it.ref];
-      if (c.cad) { const t = await this.template(c.cad); obj = t ? t.clone() : this.photoDevice(it.ref); }
+      const lo = c.cad && this.opt.lod && this.opt.lod[c.cad] ? await this.template(c.cad, true) : null;
+      if (lo) {
+        obj = new THREE.Group(); const l = lo.clone(); obj.add(l);
+        const h = it.h || 1.5;
+        obj.userData.lod = { cad: c.cad, lo: l, hi: null, on: false, r: .5 * Math.hypot(it.w || 1, it.d || 1, h), cy: h / 2 };
+      } else if (c.cad) { const t = await this.template(c.cad); obj = t ? t.clone() : this.photoDevice(it.ref); }
       else if (c.station) obj = await this.stationDevice(it.ref);
       else obj = this.photoDevice(it.ref);
     } else obj = await this.buildExtra(it);
@@ -625,11 +761,12 @@ export class Booth3D {
     obj.traverse(m => { if (m.isMesh) m.userData.uid = it.uid; });
     o.add(obj);
     if (obj.userData.board) o.userData.board = obj.userData.board;
+    if (obj.userData.lod) o.userData.lod = obj.userData.lod;
     this.shadowsDirty(); this.kick();
   }
 
   disposeGroup(g) {
-    g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.isInstancedMesh) o.dispose(); });
   }
   shadowsDirty() { this.renderer.shadowMap.needsUpdate = true; this.kick(); }
   fitLights(W, D) {
@@ -639,26 +776,42 @@ export class Booth3D {
   }
 
   // ---------------------------------------------------------------- Personen (Maßstab)
+  // Personen wie im Architekturmodell: schlichte, helle Figuren; Standpersonal mit weißem Hemd und gelbem Band.
+  // Gezeichnet als Instanzen (ein Draw-Call je Körperteil für alle Figuren), Farbe je Instanz.
   buildPeople() {
-    const g = this.peopleG; while (g.children.length) g.remove(g.children[0]);
+    const g = this.peopleG;
+    for (const m of g.children) m.dispose && m.dispose();
+    while (g.children.length) g.remove(g.children[0]);
+    this.people = [];
     if (!this.res) return;
     const res = this.res;
+    const PG = this.personGeo || (this.personGeo = {
+      leg: new THREE.CapsuleGeometry(.075, .62, 3, 8), torso: new THREE.CapsuleGeometry(.17, .36, 3, 10), arm: new THREE.CapsuleGeometry(.048, .5, 3, 8),
+      head: new THREE.SphereGeometry(.105, 12, 9), band: new THREE.BoxGeometry(.04, .32, .015),
+    });
+    const pmat = this.personMat || (this.personMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .8 }));
+    const col = (m) => m.color;
+    const parts = { leg: [], torso: [], arm: [], head: [], band: [] };
+    const M = new THREE.Matrix4(), L = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1);
     let seed = 42; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    // Personen wie im Architekturmodell: schlichte, helle Figuren; Standpersonal mit weißem Hemd und gelbem Band
     const person = (x, z, rot, staff, onBooth) => {
-      const p = new THREE.Group(); p.position.set(this.ox + x, onBooth ? P : 0, this.oz + z); p.rotation.y = rot;
+      const pos = new THREE.Vector3(this.ox + x, onBooth ? P : 0, this.oz + z);
       const s = (1.68 + rnd() * .16) / 1.75;
-      const top = staff ? this.mat.shirt : this.mat.visitor[Math.floor(rnd() * this.mat.visitor.length)];
-      const low = staff ? this.mat.trousers : this.mat.visitorLow;
-      const cap = (r, len, mat, x0, y0, z0, rz = 0, rx = 0) => { const m = new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat); m.position.set(x0, y0, z0); m.rotation.set(rx, 0, rz); m.castShadow = true; p.add(m); return m; };
-      cap(.075, .62, low, -.095, .44, 0); cap(.075, .62, low, .095, .44, 0);
-      const torso = cap(.17, .36, top, 0, 1.11, 0); torso.scale.set(1.05, 1, .62);
+      M.compose(pos, q.setFromEuler(e.set(0, rot, 0)), new THREE.Vector3(s, s, s));
+      const top = staff ? col(this.mat.shirt) : col(this.mat.visitor[Math.floor(rnd() * this.mat.visitor.length)]);
+      const low = staff ? col(this.mat.trousers) : col(this.mat.visitorLow);
+      const p = { pos, slots: [] };
+      const add = (k, color, x0, y0, z0, rx = 0, rz = 0, sc = one) => {
+        L.compose(new THREE.Vector3(x0, y0, z0), q.setFromEuler(e.set(rx, 0, rz)), sc);
+        p.slots.push([k, parts[k].length]); parts[k].push({ m: M.clone().multiply(L), c: color });
+      };
+      add('leg', low, -.095, .44, 0); add('leg', low, .095, .44, 0);
+      add('torso', top, 0, 1.11, 0, 0, 0, new THREE.Vector3(1.05, 1, .62));
       const sw = (rnd() - .5) * .3;
-      cap(.048, .5, top, -.235, 1.1, .02, .1, sw); cap(.048, .5, top, .235, 1.1, .02, -.1, -sw);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(.105, 16, 12), this.mat.skin); head.position.y = 1.62; head.scale.set(.9, 1.1, .95); head.castShadow = true; p.add(head);
-      if (staff) { const ly = new THREE.Mesh(new THREE.BoxGeometry(.04, .32, .015), this.mat.yellow); ly.position.set(0, 1.18, .115); p.add(ly); }
-      p.scale.setScalar(s); p.userData.aisle = !onBooth;
-      g.add(p);
+      add('arm', top, -.235, 1.1, .02, sw, .1); add('arm', top, .235, 1.1, .02, -sw, -.1);
+      add('head', col(this.mat.skin), 0, 1.62, 0, 0, 0, new THREE.Vector3(.9, 1.1, .95));
+      if (staff) add('band', col(this.mat.yellow), 0, 1.18, .115);
+      this.people.push(p);
     };
     for (const it of res.items) {
       if (it.kind === 'device' && it.live) {
@@ -674,7 +827,26 @@ export class Booth3D {
     // Besucher im Gang
     const n = Math.round(clamp(res.W / 2.5, 3, 10));
     for (let i = 0; i < n; i++) person(-2 + rnd() * (res.W + 4), res.D + .8 + rnd() * (AISLE - 1.6), rnd() < .5 ? Math.PI / 2 : -Math.PI / 2, false, false);
+    this.personMesh = {};
+    for (const [k, list] of Object.entries(parts)) {
+      if (!list.length) continue;
+      const im = new THREE.InstancedMesh(PG[k], pmat, list.length);
+      list.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, it.c); });
+      im.castShadow = k !== 'band'; im.computeBoundingSphere();
+      im.userData.mats = list.map(it => it.m);
+      this.personMesh[k] = im; g.add(im);
+    }
     g.visible = this.peopleOn;
+  }
+  // Figuren näher als r (m, waagerecht) an pos ausblenden – man läuft nicht durch Menschen hindurch; pos = null: alle zeigen
+  peopleNear(pos, r = 1.3) {
+    const Z = this._zero || (this._zero = new THREE.Matrix4().makeScale(0, 0, 0));
+    for (const p of this.people || []) {
+      const hide = !!pos && Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) < r;
+      if (hide === !!p.hidden) continue;
+      p.hidden = hide;
+      for (const [k, i] of p.slots) { const im = this.personMesh[k]; im.setMatrixAt(i, hide ? Z : im.userData.mats[i]); im.instanceMatrix.needsUpdate = true; }
+    }
   }
   setHanging(on) { this.boothG.traverse(o => { if (o.userData.hanging) o.visible = on; }); this.shadowsDirty(); }
   setNeighbors(on) { this.hallG.traverse(o => { if (o.userData.neighbor) o.visible = on; }); }
@@ -702,12 +874,14 @@ export class Booth3D {
     const w = this.el.clientWidth, h = this.el.clientHeight; const v = new THREE.Vector3();
     const hideAll = this.mode === 'walk' && !this.tour;
     // Positionen berechnen, dann entzerren: überlappende Schilder rücken nach oben (vordere zuerst)
+    // Stil nur bei Änderung schreiben (läuft in jedem Bild)
+    const show = (l, vis) => { if (l.vis !== vis) { l.vis = vis; l.el.style.opacity = vis ? 1 : 0; l.el.style.pointerEvents = vis ? 'auto' : 'none'; } };
     const list = [];
     for (const [uid, l] of this.labels) {
-      const o = this.items.get(uid); if (!o || hideAll) { l.el.style.opacity = 0; continue; }
+      const o = this.items.get(uid); if (!o || hideAll) { show(l, false); continue; }
       v.set(o.position.x, P + (l.it.h || 1.5) + .35, o.position.z).project(this.cam);
       const vis = v.z < 1 && v.x > -1.1 && v.x < 1.1 && v.y > -1.1 && v.y < 1.1;
-      l.el.style.opacity = vis ? 1 : 0; l.el.style.pointerEvents = vis ? 'auto' : 'none';
+      show(l, vis);
       if (!vis) continue;
       if (!l.w) { l.w = l.el.offsetWidth || 120; l.h = l.el.offsetHeight || 26; }
       list.push({ l, uid, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h, z: v.z });
@@ -722,8 +896,9 @@ export class Booth3D {
         y = hitL.y - (hitL.h + it.l.h) / 2 - 3;
       }
       placed.push({ x: it.x, y, w: it.l.w, h: it.l.h });
-      it.l.el.style.transform = `translate(${it.x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
-      it.l.el.classList.toggle('is-sel', it.uid === this.selected);
+      const tf = `translate(${it.x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+      if (it.l.tf !== tf) { it.l.tf = tf; it.l.el.style.transform = tf; }
+      const sel = it.uid === this.selected; if (it.l.sel !== sel) { it.l.sel = sel; it.l.el.classList.toggle('is-sel', sel); }
     }
   }
   facePhotos() {
@@ -818,13 +993,13 @@ export class Booth3D {
     this.applyWalkCam();
     this.kick();
   }
-  exitWalk() { this.walk.keys.clear(); this.walk.move = [0, 0]; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); for (const p of this.peopleG.children) p.visible = true; }
+  exitWalk() { this.walk.keys.clear(); this.walk.move = [0, 0]; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); this.peopleNear(null); }
   onBooth(x, z) { return x >= 0 && x <= this.res.W && z >= 0 && z <= this.res.D; }
   applyWalkCam() {
     const w = this.walk, c = this.camera;
     c.position.set(this.ox + w.pos.x, w.eye, this.oz + w.pos.z);
     // Figuren direkt vor der Kamera ausblenden (man läuft nicht durch Menschen hindurch)
-    for (const p of this.peopleG.children) { const d = Math.hypot(p.position.x - c.position.x, p.position.z - c.position.z); p.visible = d > 1.3; }
+    this.peopleNear(c.position, 1.3);
     const dir = new THREE.Vector3(-Math.sin(w.yaw) * Math.cos(w.pitch), Math.sin(w.pitch), -Math.cos(w.yaw) * Math.cos(w.pitch));
     c.lookAt(c.position.clone().add(dir));
   }
@@ -985,7 +1160,9 @@ export class Booth3D {
         this.updateSelection(drag.uid, x, z);
         this.kick(); return;
       }
-      if (e.pointerType === 'mouse' && !e.buttons && this.opt.editable && this.mode !== 'walk') { cv.style.cursor = this.pickUid(e) ? (this.pickUid(e) === this.selected ? 'move' : 'pointer') : ''; }
+      if (e.pointerType === 'mouse' && !e.buttons && this.opt.editable && this.mode !== 'walk' && e.timeStamp - (this.hoverT || 0) > 60) {
+        this.hoverT = e.timeStamp; const uid = this.pickUid(e); cv.style.cursor = uid ? (uid === this.selected ? 'move' : 'pointer') : '';
+      }
     });
     const up = (e) => {
       if (lookDrag) { lookDrag = null; return; }
@@ -1008,7 +1185,8 @@ export class Booth3D {
   ndc(e) { const r = this.canvas.getBoundingClientRect(); return new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1); }
   pickUid(e) {
     this.ray.setFromCamera(this.ndc(e), this.cam);
-    const hits = this.ray.intersectObjects(this.itemG.children, true);
+    // Geräte mit Detailstufen gegen die Fernfassung prüfen: für die Auswahl genau genug, bis zu 10× weniger Dreiecke
+    const hits = this.ray.intersectObjects(this.itemG.children.map(o => o.userData.lod ? o.userData.lod.lo : o), true);
     for (const h of hits) { let o = h.object; while (o && !o.userData.uid) o = o.parent; if (o) return o.userData.uid; }
     return null;
   }
@@ -1041,6 +1219,7 @@ export class Booth3D {
   // view: overview | front | left | right | iso | top | eye; liefert JPEG-DataURL
   async snapshot(view, w = 1800, h = 1100, opt = {}) {
     if (!this.res) return null;
+    await Promise.all([...this.items.values()].filter(o => o.userData.lod).map(o => this.loadHi(o)));     // fürs PDF volle Modelle
     const r = this.renderer;
     const prevSize = r.getSize(new THREE.Vector2()), prevPR = r.getPixelRatio();
     const W = this.res.W, D = this.res.D, S = Math.max(W, D);
@@ -1067,16 +1246,16 @@ export class Booth3D {
     }
     this.setNeighbors(view === 'eye');
     if (view === 'top') this.setHanging(false);
-    const hidden = [];
-    if (view === 'eye') for (const p of this.peopleG.children) if (p.position.distanceTo(cam.position) < 4.5 && p.visible) { p.visible = false; hidden.push(p); }
+    if (view === 'eye') this.peopleNear(cam.position, 4.5);
     r.setPixelRatio(1); r.setSize(w, h, false);
     this.facePhotosFor(cam);
+    this.updateLod(true);
     r.shadowMap.needsUpdate = true;
     r.render(this.scene, cam);
     const url = this.canvas.toDataURL('image/jpeg', .9);
     r.setPixelRatio(prevPR); r.setSize(prevSize.x, prevSize.y, false);
     this.peopleG.visible = ppl; this.selG.visible = sel; this.labelsOn = labels;
-    for (const p of hidden) p.visible = true;
+    this.peopleNear(this.mode === 'walk' ? this.camera.position : null, 1.3);
     this.setNeighbors(true); this.setHanging(this.mode !== 'top');
     if (this.ceiling) this.ceiling.visible = ceil;
     this.resize(); this.kick();

@@ -652,14 +652,15 @@ booth = new Booth3D($('[data-stage]'), {
 window.ZMSP = { S, booth, assistant, solve, effPlan, moveItem, select, removeItem, undo };
 
 (async () => {
-  const [models, aspects, events] = await Promise.all([
+  const [models, aspects, events, , lod] = await Promise.all([
     fetch('models/models.json').then(r => r.json()).catch(() => ({})),
     fetch('img/aspects.json').then(r => r.json()).catch(() => ({})),
     fetch('data/fairs.json').then(r => r.json()).catch(() => []),
     fetch('config.json').then(r => r.json()).then(c => { S.kiDefault = c.kiServer || ''; }).catch(() => {}),
+    fetch('models/lod.json').then(r => r.json()).catch(() => ({})),
   ]);
   S.models = models; S.aspects = aspects; S.events = events;
-  booth.opt.models = models; booth.opt.aspects = aspects;
+  booth.opt.models = models; booth.opt.aspects = aspects; booth.opt.lod = lod;
   let plan = null;
   const m = location.hash.match(/#p=([\w-]+)/);
   if (m) {
