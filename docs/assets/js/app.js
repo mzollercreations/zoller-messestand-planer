@@ -349,7 +349,7 @@ function setView(v) {
 $$('[data-view]').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
 $$('[data-toggle]').forEach(b => b.addEventListener('click', () => {
   const on = !b.classList.contains('is-on'); b.classList.toggle('is-on', on);
-  if (b.dataset.toggle === 'labels') booth.setLabels(on); else booth.setPeople(on);
+  booth.setLabels(on);
 }));
 function onMode(m) {
   $$('[data-views] button').forEach(b => b.classList.toggle('is-on', b.dataset.view === (m === 'orbit' ? (S.lastOrbit || 'overview') : m)));

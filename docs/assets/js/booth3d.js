@@ -79,8 +79,8 @@ export class Booth3D {
     c.addEventListener('start', () => { this.camAnim = null; this.stopTour(); });
     this.oc = new OrbitControls(this.ortho, this.canvas); this.oc.enableRotate = false; this.oc.enabled = false; this.oc.screenSpacePanning = true;
     this.oc.addEventListener('change', () => this.kick());
-    this.hallG = new THREE.Group(); this.boothG = new THREE.Group(); this.itemG = new THREE.Group(); this.peopleG = new THREE.Group(); this.selG = new THREE.Group();
-    sc.add(this.hallG, this.boothG, this.itemG, this.peopleG, this.selG);
+    this.hallG = new THREE.Group(); this.boothG = new THREE.Group(); this.itemG = new THREE.Group(); this.selG = new THREE.Group();
+    sc.add(this.hallG, this.boothG, this.itemG, this.selG);
     const draco = new DRACOLoader(); draco.setDecoderPath(this.base + 'assets/vendor/draco/');
     this.gltf = new GLTFLoader(); this.gltf.setDRACOLoader(draco);
     this.texLoader = new THREE.TextureLoader();
@@ -106,11 +106,6 @@ export class Booth3D {
       neighbor: new THREE.MeshStandardMaterial({ color: 0xf3f3f1, roughness: .9 }),
       neighbor2: new THREE.MeshStandardMaterial({ color: 0xd9dbdc, roughness: .9 }),
       ceiling: new THREE.MeshStandardMaterial({ color: 0x55595d, roughness: .9, side: THREE.FrontSide }),
-      skin: new THREE.MeshStandardMaterial({ color: 0xd8d2cc, roughness: .7 }),
-      shirt: new THREE.MeshStandardMaterial({ color: 0xf4f4f2, roughness: .8 }),
-      trousers: new THREE.MeshStandardMaterial({ color: 0x3a3c40, roughness: .8 }),
-      visitor: [0xc9ccce, 0xb4b8bb, 0xd9dbdc, 0x9fa3a7].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: .85 })),
-      visitorLow: new THREE.MeshStandardMaterial({ color: 0x8d9195, roughness: .85 }),
       sel: new THREE.MeshBasicMaterial({ color: 0xf0e600, transparent: true, opacity: .9, depthTest: false }),
       selZone: new THREE.MeshBasicMaterial({ color: 0xf0e600, transparent: true, opacity: .18, depthWrite: false }),
       bad: new THREE.MeshBasicMaterial({ color: 0xd23b2b, transparent: true, opacity: .35, depthWrite: false }),
@@ -120,7 +115,7 @@ export class Booth3D {
     this.items = new Map();       // uid → Group
     this.labels = new Map();
     this.anims = [];
-    this.labelsOn = true; this.peopleOn = true;
+    this.labelsOn = true;
     this.mode = 'orbit';
     this.walk = { yaw: 0, pitch: 0, pos: new THREE.Vector3(), keys: new Set(), move: [0, 0], speed: 1.5, eye: EYE };
     this.ray = new THREE.Raycaster();
@@ -731,7 +726,6 @@ export class Booth3D {
       o.userData.item = it;
     }
     for (const [k, o] of this.items) if (!seen.has(k)) { this.itemG.remove(o); this.items.delete(k); this.removeLabel(k); }
-    this.buildPeople();
     this.fitLights(W, D);
     this.fitOrtho();
     this.updateSelection();
@@ -775,82 +769,8 @@ export class Booth3D {
     const s = this.sun.shadow.camera; s.left = -R; s.right = R; s.top = R; s.bottom = -R; s.near = 1; s.far = 80; s.updateProjectionMatrix();
   }
 
-  // ---------------------------------------------------------------- Personen (Maßstab)
-  // Personen wie im Architekturmodell: schlichte, helle Figuren; Standpersonal mit weißem Hemd und gelbem Band.
-  // Gezeichnet als Instanzen (ein Draw-Call je Körperteil für alle Figuren), Farbe je Instanz.
-  buildPeople() {
-    const g = this.peopleG;
-    for (const m of g.children) m.dispose && m.dispose();
-    while (g.children.length) g.remove(g.children[0]);
-    this.people = [];
-    if (!this.res) return;
-    const res = this.res;
-    const PG = this.personGeo || (this.personGeo = {
-      leg: new THREE.CapsuleGeometry(.075, .62, 3, 8), torso: new THREE.CapsuleGeometry(.17, .36, 3, 10), arm: new THREE.CapsuleGeometry(.048, .5, 3, 8),
-      head: new THREE.SphereGeometry(.105, 12, 9), band: new THREE.BoxGeometry(.04, .32, .015),
-    });
-    const pmat = this.personMat || (this.personMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: .8 }));
-    const col = (m) => m.color;
-    const parts = { leg: [], torso: [], arm: [], head: [], band: [] };
-    const M = new THREE.Matrix4(), L = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1);
-    let seed = 42; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const person = (x, z, rot, staff, onBooth) => {
-      const pos = new THREE.Vector3(this.ox + x, onBooth ? P : 0, this.oz + z);
-      const s = (1.68 + rnd() * .16) / 1.75;
-      M.compose(pos, q.setFromEuler(e.set(0, rot, 0)), new THREE.Vector3(s, s, s));
-      const top = staff ? col(this.mat.shirt) : col(this.mat.visitor[Math.floor(rnd() * this.mat.visitor.length)]);
-      const low = staff ? col(this.mat.trousers) : col(this.mat.visitorLow);
-      const p = { pos, slots: [] };
-      const add = (k, color, x0, y0, z0, rx = 0, rz = 0, sc = one) => {
-        L.compose(new THREE.Vector3(x0, y0, z0), q.setFromEuler(e.set(rx, 0, rz)), sc);
-        p.slots.push([k, parts[k].length]); parts[k].push({ m: M.clone().multiply(L), c: color });
-      };
-      add('leg', low, -.095, .44, 0); add('leg', low, .095, .44, 0);
-      add('torso', top, 0, 1.11, 0, 0, 0, new THREE.Vector3(1.05, 1, .62));
-      const sw = (rnd() - .5) * .3;
-      add('arm', top, -.235, 1.1, .02, sw, .1); add('arm', top, .235, 1.1, .02, -sw, -.1);
-      add('head', col(this.mat.skin), 0, 1.62, 0, 0, 0, new THREE.Vector3(.9, 1.1, .95));
-      if (staff) add('band', col(this.mat.yellow), 0, 1.18, .115);
-      this.people.push(p);
-    };
-    for (const it of res.items) {
-      if (it.kind === 'device' && it.live) {
-        const f = it.zones.find(z => z.t === 'front'); if (!f) continue;
-        const fx = (f.r.x0 + f.r.x1) / 2, fz = (f.r.z0 + f.r.z1) / 2;
-        const [vx, vz] = [[0, 1], [1, 0], [0, -1], [-1, 0]][it.q];
-        if (rnd() < .75) person(fx - vx * .2 + (rnd() - .5) * .4, fz - vz * .2 + (rnd() - .5) * .4, it.q * Math.PI / 2 + Math.PI, true, true);
-        if (rnd() < .6) person(fx + vx * .45 + (rnd() - .5) * .6, fz + vz * .45 + (rnd() - .5) * .6, it.q * Math.PI / 2 + Math.PI + (rnd() - .5), false, true);
-      }
-      if (it.kind === 'counter') { const bz = it.zones.find(z => z.t === 'back'); if (bz) person((bz.r.x0 + bz.r.x1) / 2, (bz.r.z0 + bz.r.z1) / 2, it.q * Math.PI / 2, true, true); }
-      if (it.kind === 'bartable' && rnd() < .7) { person(it.x + .55, it.z - .1, -Math.PI / 2, rnd() < .5, true); person(it.x - .55, it.z + .1, Math.PI / 2, false, true); }
-    }
-    // Besucher im Gang
-    const n = Math.round(clamp(res.W / 2.5, 3, 10));
-    for (let i = 0; i < n; i++) person(-2 + rnd() * (res.W + 4), res.D + .8 + rnd() * (AISLE - 1.6), rnd() < .5 ? Math.PI / 2 : -Math.PI / 2, false, false);
-    this.personMesh = {};
-    for (const [k, list] of Object.entries(parts)) {
-      if (!list.length) continue;
-      const im = new THREE.InstancedMesh(PG[k], pmat, list.length);
-      list.forEach((it, i) => { im.setMatrixAt(i, it.m); im.setColorAt(i, it.c); });
-      im.castShadow = k !== 'band'; im.computeBoundingSphere();
-      im.userData.mats = list.map(it => it.m);
-      this.personMesh[k] = im; g.add(im);
-    }
-    g.visible = this.peopleOn;
-  }
-  // Figuren näher als r (m, waagerecht) an pos ausblenden – man läuft nicht durch Menschen hindurch; pos = null: alle zeigen
-  peopleNear(pos, r = 1.3) {
-    const Z = this._zero || (this._zero = new THREE.Matrix4().makeScale(0, 0, 0));
-    for (const p of this.people || []) {
-      const hide = !!pos && Math.hypot(p.pos.x - pos.x, p.pos.z - pos.z) < r;
-      if (hide === !!p.hidden) continue;
-      p.hidden = hide;
-      for (const [k, i] of p.slots) { const im = this.personMesh[k]; im.setMatrixAt(i, hide ? Z : im.userData.mats[i]); im.instanceMatrix.needsUpdate = true; }
-    }
-  }
   setHanging(on) { this.boothG.traverse(o => { if (o.userData.hanging) o.visible = on; }); this.shadowsDirty(); }
   setNeighbors(on) { this.hallG.traverse(o => { if (o.userData.neighbor) o.visible = on; }); }
-  setPeople(on) { this.peopleOn = on; this.peopleG.visible = on; this.shadowsDirty(); }
 
   // ---------------------------------------------------------------- Beschriftung
   syncLabels() {
@@ -993,13 +913,11 @@ export class Booth3D {
     this.applyWalkCam();
     this.kick();
   }
-  exitWalk() { this.walk.keys.clear(); this.walk.move = [0, 0]; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); this.peopleNear(null); }
+  exitWalk() { this.walk.keys.clear(); this.walk.move = [0, 0]; if (document.pointerLockElement === this.canvas) document.exitPointerLock(); }
   onBooth(x, z) { return x >= 0 && x <= this.res.W && z >= 0 && z <= this.res.D; }
   applyWalkCam() {
     const w = this.walk, c = this.camera;
     c.position.set(this.ox + w.pos.x, w.eye, this.oz + w.pos.z);
-    // Figuren direkt vor der Kamera ausblenden (man läuft nicht durch Menschen hindurch)
-    this.peopleNear(c.position, 1.3);
     const dir = new THREE.Vector3(-Math.sin(w.yaw) * Math.cos(w.pitch), Math.sin(w.pitch), -Math.cos(w.yaw) * Math.cos(w.pitch));
     c.lookAt(c.position.clone().add(dir));
   }
@@ -1223,8 +1141,7 @@ export class Booth3D {
     const r = this.renderer;
     const prevSize = r.getSize(new THREE.Vector2()), prevPR = r.getPixelRatio();
     const W = this.res.W, D = this.res.D, S = Math.max(W, D);
-    const labels = this.labelsOn; const ppl = this.peopleG.visible;
-    this.peopleG.visible = opt.people !== undefined ? opt.people : this.peopleOn;
+    const labels = this.labelsOn;
     const sel = this.selG.visible; this.selG.visible = false;
     const ceil = this.ceiling ? this.ceiling.visible : false;
     let cam;
@@ -1246,7 +1163,6 @@ export class Booth3D {
     }
     this.setNeighbors(view === 'eye');
     if (view === 'top') this.setHanging(false);
-    if (view === 'eye') this.peopleNear(cam.position, 4.5);
     r.setPixelRatio(1); r.setSize(w, h, false);
     this.facePhotosFor(cam);
     this.updateLod(true);
@@ -1254,8 +1170,7 @@ export class Booth3D {
     r.render(this.scene, cam);
     const url = this.canvas.toDataURL('image/jpeg', .9);
     r.setPixelRatio(prevPR); r.setSize(prevSize.x, prevSize.y, false);
-    this.peopleG.visible = ppl; this.selG.visible = sel; this.labelsOn = labels;
-    this.peopleNear(this.mode === 'walk' ? this.camera.position : null, 1.3);
+    this.selG.visible = sel; this.labelsOn = labels;
     this.setNeighbors(true); this.setHanging(this.mode !== 'top');
     if (this.ceiling) this.ceiling.visible = ceil;
     this.resize(); this.kick();

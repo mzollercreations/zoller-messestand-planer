@@ -49,7 +49,7 @@ export async function makePdf({ plan, res, booth, lang, base = '', onProgress = 
   let k = 0;
   for (const [v, w, h] of views) {
     if ((v === 'left' && !res.open.left) || (v === 'right' && !res.open.right)) continue;
-    shots[v] = await booth.snapshot(v, w, h, v === 'top' ? { people: false, margin: 1.2 } : {});
+    shots[v] = await booth.snapshot(v, w, h, v === 'top' ? { margin: 1.2 } : {});
     onProgress(.05 + .45 * (++k / views.length));
     await new Promise(r => setTimeout(r, 0));
   }

@@ -63,7 +63,7 @@ Der Planer baut jeden Stand in diesem Design; Farben nur Gelb, Anthrazit/Schwarz
   nicht. In Bewegung passt sich die Auflösung der Bildrate an, das stehende Bild ist wieder voll scharf. Geräte haben eine
   leichte Fernfassung (`docs/models/lod`, `tools/build_lod.py`), bis sie groß im Bild sind; fürs PDF immer die volle.
   »redomatic 600«, »toolBalancer«, »powerShrink 400« haben keine (ihre CAD-Netze zerfallen beim Vereinfachen). Je Gerät
-  zwei Draw-Calls (Materialklassen als Vertex-Attribute), Halle und Personen als Instanzen.
+  zwei Draw-Calls (Materialklassen als Vertex-Attribute), Halle als Instanzen. Keine Personen-Figuren in der 3D-Ansicht (Wunsch 15.10.2026).
 - **Zeitplan** ist ein Vorschlag (übliche Vorläufe); Fristen aus dem Ausstellerhandbuch der Messe haben Vorrang.
 - Messen für die Schnellauswahl: kommende Messen aus `zoller-webseite/content/events.json` + große Fachmessen.
 
