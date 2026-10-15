@@ -52,9 +52,12 @@ export class Booth3D {
     this.loop = this.loop.bind(this);
     this.touch = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
     const r = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    // Auflösung: im Stillstand volle Schärfe (prMax), in Bewegung ein Pixelbudget, das sich der Bildrate anpasst (adapt)
+    // Auflösung: ein festes Pixelverhältnis für Bewegung und Stillstand aus einem Pixelbudget je Gerät – jedes Umschalten
+    // legt den Zeichenpuffer neu an (gemessen 5–270 ms, also ein Ruck genau beim Losdrehen). Nur wenn ein Gerät beim
+    // Bewegen dauerhaft keine flüssige Bildrate schafft, wird es (selten, stufenweise) gesenkt – siehe adapt()
     this.prMax = Math.min(window.devicePixelRatio || 1, 2);
-    this.motionPx = this.touch ? 9e5 : 2.2e6;
+    this.pxBudget = this.touch ? 2.4e6 : 4.2e6;
+    this.prScale = 1; this.ad = { ft: [], trial: null, lock: false };
     this.pr = this.prMax; r.setPixelRatio(this.pr);
     r.outputColorSpace = THREE.SRGBColorSpace; r.toneMapping = THREE.NeutralToneMapping; r.toneMappingExposure = .95;
     r.shadowMap.enabled = true; r.shadowMap.type = THREE.PCFSoftShadowMap; r.shadowMap.autoUpdate = false;
@@ -134,9 +137,17 @@ export class Booth3D {
   kick(ms = 300) { this.until = Math.max(this.until || 0, performance.now() + ms); if (!this.raf) this.raf = requestAnimationFrame(this.loop); }
   resize() {
     const w = this.el.clientWidth, h = this.el.clientHeight; if (!w || !h) return;
-    this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
-    this.fitOrtho(); this.kick();
+    // setSize legt den Zeichenpuffer neu an – auch bei gleicher Größe → nur bei echter Änderung
+    if (w !== this.sw || h !== this.sh) {
+      this.sw = w; this.sh = h;
+      this.pr = this.targetPR(); this.renderer.setDrawingBufferSize(w, h, this.pr);     // Größe + Pixelverhältnis in einem Schritt
+      this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); this.fitOrtho();
+    }
+    this.kick();
+  }
+  targetPR() {
+    const pr = Math.min(this.prMax, Math.sqrt(this.pxBudget / Math.max(1, this.sw * this.sh)));
+    return Math.max(Math.min(1, this.prMax) * .75, pr * this.prScale);
   }
   // verdeckt (Handy: Chat liegt darüber; Grundriss, Listen) → nicht zeichnen; setTab ruft beim Zurückwechseln resize()
   shown() {
@@ -155,31 +166,35 @@ export class Booth3D {
     if (this.tour) { busy = true; this.stepTour(dt); }
     if (this.mode === 'orbit') { if (this.controls.update()) busy = true; } else if (this.mode === 'top') { if (this.oc.update()) busy = true; }
     const more = busy || now < this.until;
+    this.moving = more;
     this.adapt(now, more);
     this.facePhotos();
     this.updateLod();
     this.renderer.render(this.scene, this.cam);
     if (this.labelsOn) this.updateLabels();
-    if (more) this.raf = requestAnimationFrame(this.loop);
+    // controls.update() meldet »change« → kick() hat das nächste Bild evtl. schon bestellt; ein zweites würde die
+    // Schleife je Bild verdoppeln (beim Drehen dutzende Renderings pro Bild)
+    if (more && !this.raf) this.raf = requestAnimationFrame(this.loop);
+    if (!more) this.idle();
   }
-  // Pixelverhältnis: in Bewegung so viele Pixel, wie das Gerät flüssig schafft (gemessen an der Bildrate), das letzte
-  // Bild einer Bewegung wieder in voller Schärfe
+  // Bildrate beim Bewegen messen (Median je 30 Bilder – einzelne Hänger beim Laden zählen nicht). Unter ~45 Bildern/s
+  // Auflösung probeweise senken; bringt das nichts (z. B. Stromsparmodus mit festen 30 Bildern/s), zurück und Schluss
   adapt(now, moving) {
-    let pr = this.prMax;
-    if (moving) {
-      if (this.frameT) {
-        const ft = now - this.frameT;
-        this.ftAvg = this.ftAvg ? this.ftAvg * .88 + ft * .12 : ft;
-        this.ftN = (this.ftN || 0) + 1;
-        const full = this.el.clientWidth * this.el.clientHeight * this.prMax * this.prMax;
-        if (this.ftN > 12 && this.ftAvg > 26 && this.motionPx > 1.6e5) { this.motionPx *= .72; this.ftN = 0; }
-        else if (this.ftN > 90 && this.ftAvg < 18 && this.motionPx < full) { this.motionPx *= 1.2; this.ftN = 0; }
-      }
-      this.frameT = now;
-      pr = clamp(Math.sqrt(this.motionPx / Math.max(1, this.el.clientWidth * this.el.clientHeight)), Math.min(.7, this.prMax), this.prMax);
-    } else this.frameT = 0;
-    if (Math.abs(pr - this.pr) > .05) { this.pr = pr; this.renderer.setPixelRatio(pr); }
+    if (!moving) { this.frameT = 0; return; }
+    const a = this.ad, last = this.frameT; this.frameT = now;
+    if (!last || a.lock) return;
+    a.ft.push(now - last); if (a.ft.length < 30) return;
+    const med = a.ft.sort((x, y) => x - y)[15]; a.ft.length = 0;
+    if (a.trial) {
+      if (med > a.trial.med * .85) { this.prScale = a.trial.scale; a.lock = true; this.applyPR(); }
+      a.trial = null;
+    } else if (med > 22 && this.pr > Math.min(1, this.prMax) * .8) {
+      a.trial = { scale: this.prScale, med }; this.prScale *= .78; this.applyPR();
+    }
   }
+  applyPR() { const pr = this.targetPR(); if (Math.abs(pr - this.pr) > .02) { this.pr = pr; this.renderer.setPixelRatio(pr); } }
+  // Ruhephase: aufgeschobene volle Modelle laden
+  idle() { if (this.hiQueue && this.hiQueue.size) this.pumpHi(); }
 
   // ---------------------------------------------------------------- Modelle
   // lo: leichte Fernfassung (docs/models/lod, tools/build_lod.py) – gleiche Lage und Materialklassen wie die volle
@@ -271,9 +286,21 @@ export class Booth3D {
       let px = 2 * L.r * k;
       if (!cam.isOrthographicCamera) px /= Math.max(.2, cam.position.distanceTo(v.set(o.position.x, o.position.y + L.cy, o.position.z)));
       const want = force || px > (L.on ? 190 : 240);
-      if (want && !L.hi) { this.loadHi(o); continue; }
+      if (want && !L.hi) { if (force) this.loadHi(o); else this.queueHi(o); continue; }
       if (L.hi && L.on !== want) { L.on = want; L.hi.visible = want; L.lo.visible = !want; }
     }
+  }
+  // Volle Fassungen nie mitten in einer Bewegung laden (Einlesen, Aufbereiten und Hochladen ruckeln am Handy) →
+  // Warteschlange, die nur in Ruhephasen läuft, ein Modell nach dem anderen
+  queueHi(o) { (this.hiQueue || (this.hiQueue = new Set())).add(o); if (!this.moving) this.pumpHi(); }
+  pumpHi() {
+    if (this.hiBusy || !this.hiQueue || !this.hiQueue.size) return;
+    clearTimeout(this.hiT);
+    if (this.moving || !this.shown()) { this.hiT = setTimeout(() => this.pumpHi(), 400); return; }
+    const o = this.hiQueue.values().next().value; this.hiQueue.delete(o);
+    if (!o.lod || o.lod.hi || !this.items.has(o.userData.uid)) { this.pumpHi(); return; }
+    this.hiBusy = true;
+    this.loadHi(o).finally(() => { this.hiBusy = false; this.hiT = setTimeout(() => this.pumpHi(), 120); });
   }
   loadHi(o) {
     const L = o.lod;
@@ -287,7 +314,53 @@ export class Booth3D {
     }
     return L.loading;
   }
-  prefetchHi() { for (const o of this.items.values()) if (o.lod) this.loadHi(o); }
+  prefetchHi() { for (const o of this.items.values()) if (o.lod && !o.lod.hi) this.queueHi(o); }
+
+  // Shader übersetzen (auch für unsichtbare Teile wie die Hallendecke der Begehung) und – solange die 3D-Fläche verdeckt
+  // ist (Handy: Chat liegt darüber) – ein Bild vorab zeichnen: Texturen, Puffer und Schatten liegen dann schon auf der
+  // Grafikkarte, der Wechsel in die 3D-Ansicht bzw. in die Begehung stockt nicht mehr
+  warm() {
+    clearTimeout(this.warmT);
+    this.warmT = setTimeout(async () => {
+      const tok = this.token;
+      await Promise.all([...(this.fills || [])]);
+      if (tok !== this.token) return;
+      await this.renderer.compileAsync(this.scene, this.camera).catch(() => {});
+      if (tok !== this.token) return;
+      if (!this.shown() && this.el.clientWidth && this.el.clientHeight) { this.facePhotos(); this.renderer.render(this.scene, this.cam); if (this.labelsOn) this.updateLabels(); }
+      this.prefetchHi();
+    }, 350);
+  }
+
+  // Statische Teile je Material zu einem Mesh zusammenfassen (Möbel, Kabine, Lager, Stelen, Wände …): ein Draw-Call
+  // statt Dutzender, gleiche Optik. Ausgenommen: Mehrfachmaterial, Instanzen, Linien und alles, was sich eigenständig
+  // bewegt oder ein-/ausgeblendet wird (userData.hanging, Foto-Tafeln)
+  mergeStatic(root) {
+    root.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(root.matrixWorld).invert(), M = new THREE.Matrix4();
+    const buckets = new Map(), drop = new Set();
+    root.traverse((o) => {
+      if (!o.isMesh || o.isInstancedMesh || Array.isArray(o.material) || o === root) return;
+      for (let p = o; p && p !== root; p = p.parent) if (p.userData.hanging || p.name === 'board') return;
+      const g = o.geometry, key = [o.material.uuid, o.castShadow, o.receiveShadow, o.renderOrder, Object.keys(g.attributes).sort().join(), !!g.index].join('|');
+      if (!buckets.has(key)) buckets.set(key, { o, list: [] });
+      buckets.get(key).list.push(g.clone().applyMatrix4(M.multiplyMatrices(inv, o.matrixWorld)));
+      drop.add(o);
+    });
+    for (const o of drop) {
+      for (const c of [...o.children]) if (!drop.has(c)) root.attach(c);
+      o.removeFromParent(); o.geometry.dispose();
+    }
+    for (const { o, list } of buckets.values()) {
+      const m = new THREE.Mesh(list.length > 1 ? mergeGeometries(list) : list[0], o.material);
+      m.castShadow = o.castShadow; m.receiveShadow = o.receiveShadow; m.renderOrder = o.renderOrder; root.add(m);
+      if (list.length > 1) for (const x of list) x.dispose();
+    }
+    // leere Gruppen entfernen
+    const empty = []; root.traverse((o) => { if (o !== root && o.isGroup && !o.children.length && !Object.keys(o.userData).length) empty.push(o); });
+    for (const o of empty) o.removeFromParent();
+    return root;
+  }
 
   canvasTex(key, make) {
     if (this.texCache.has(key)) return this.texCache.get(key);
@@ -333,7 +406,7 @@ export class Booth3D {
       const st = new THREE.Mesh(new THREE.BoxGeometry(.05, .35, .05), this.mat.black); st.position.set(sx, 1.2, -.17); g.add(st);
     }
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-    return g;
+    return this.mergeStatic(g);
   }
 
   // ---------------------------------------------------------------- Möbel und Bauteile
@@ -428,8 +501,7 @@ export class Booth3D {
       case 'storage': await this.buildRoom(g, it, false); break;
       case 'cabin': await this.buildRoom(g, it, true); break;
     }
-    g.traverse(o => { if (o.isMesh && o.castShadow === undefined) o.castShadow = true; });
-    return g;
+    return this.mergeStatic(g);
   }
 
   // Lager (geschlossen, schwarz, Tür) bzw. Glaskabine (Rahmen, Glas, Sichtschutzband, Tisch, Stühle, Bildschirm)
@@ -550,7 +622,9 @@ export class Booth3D {
     const xs = [], zs = [];
     for (let x = -S / 2; x <= S / 2; x += 8) xs.push(x);
     for (let z = -S / 2; z <= S / 2; z += 6) zs.push(z);
-    const beams = new THREE.InstancedMesh(new THREE.BoxGeometry(.3, .6, S), this.mat.ceiling, xs.length);
+    // eigenes Material für die Instanzen: teilen sich Mesh und InstancedMesh eines, wechselt three.js in jedem Bild das Programm
+    const beamMat = this.beamMat || (this.beamMat = this.mat.ceiling.clone());
+    const beams = new THREE.InstancedMesh(new THREE.BoxGeometry(.3, .6, S), beamMat, xs.length);
     const lamps = new THREE.InstancedMesh(new THREE.CylinderGeometry(.35, .35, .08, 16), lampMat, xs.length * zs.length);
     const M = new THREE.Matrix4(); let n = 0;
     xs.forEach((x, i) => {
@@ -639,8 +713,9 @@ export class Booth3D {
       for (let i = 0; i < 4; i++) {
         const a = i * Math.PI / 2; const pnl = new THREE.Group(); pnl.rotation.y = a; grp.add(pnl);
         const core = this.box(b.side, b.h, .06, this.mat.black, 0, 0, b.side / 2, pnl); core.castShadow = true;
-        const o = new THREE.Mesh(new THREE.PlaneGeometry(b.side, b.h), mo); o.position.set(0, b.h / 2, b.side / 2 + .031); pnl.add(o);
-        const inn = new THREE.Mesh(new THREE.PlaneGeometry(b.side - .12, b.h), mi); inn.position.set(0, b.h / 2, b.side / 2 - .031); inn.rotation.y = Math.PI; pnl.add(inn);
+        // Grafik 6 mm vor dem Kern (1 mm flimmerte aus der Entfernung: Tiefenpuffer zu ungenau)
+        const o = new THREE.Mesh(new THREE.PlaneGeometry(b.side, b.h), mo); o.position.set(0, b.h / 2, b.side / 2 + .036); pnl.add(o);
+        const inn = new THREE.Mesh(new THREE.PlaneGeometry(b.side - .12, b.h), mi); inn.position.set(0, b.h / 2, b.side / 2 - .036); inn.rotation.y = Math.PI; pnl.add(inn);
         const led = this.box(b.side, .03, .07, this.mat.led, 0, -.03, b.side / 2, pnl); led.castShadow = false;
       }
       // Seile
@@ -648,7 +723,7 @@ export class Booth3D {
       for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { pts.push(sx * b.side / 2, b.h, sz * b.side / 2, sx * b.side / 2, hallH - b.bottom, sz * b.side / 2); }
       const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
       grp.add(new THREE.LineSegments(lg, this.mat.cable));
-      bg.add(grp);
+      bg.add(this.mergeStatic(grp));
     }
     // Themenwürfel
     if (sig.topics) {
@@ -700,6 +775,7 @@ export class Booth3D {
       m.rotation.x = -Math.PI / 2; m.position.set(0, .012, this.oz + D + AISLE / 2); m.receiveShadow = true; bg.add(m);
     }
     if (token !== this.token) return;
+    this.mergeStatic(bg);
     this.scene.remove(this.boothG); this.disposeGroup(this.boothG); this.boothG = bg; this.scene.add(bg);
     if (this.mode === 'top') this.setHanging(false);
     // --- Teile (Geräte und Möbel): vorhandene wiederverwenden und verschieben
@@ -734,8 +810,8 @@ export class Booth3D {
     if (!this.viewed) { this.viewed = true; this.view('overview', true); }
     else if (resized && this.mode === 'orbit' && !this.tour) this.view(this.lastView || 'overview');
     this.kick(1200);
-    // Desktop: volle Modelle im Leerlauf vorladen (kein Aufpoppen beim Heranzoomen); Handy/Tablet: erst bei Bedarf
-    if (!this.touch) { clearTimeout(this.prefetchT); this.prefetchT = setTimeout(() => Promise.all([...(this.fills || [])]).then(() => this.prefetchHi()), 1500); }
+    // danach Shader/Schatten vorbereiten und die vollen Modelle in Ruhephasen vorladen (kein Aufpoppen beim Heranzoomen)
+    this.warm();
   }
 
   async fillItem(o, it, token) {
