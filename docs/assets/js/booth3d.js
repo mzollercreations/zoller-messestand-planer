@@ -701,13 +701,29 @@ export class Booth3D {
     if (!this.labelLayer) return;
     const w = this.el.clientWidth, h = this.el.clientHeight; const v = new THREE.Vector3();
     const hideAll = this.mode === 'walk' && !this.tour;
+    // Positionen berechnen, dann entzerren: überlappende Schilder rücken nach oben (vordere zuerst)
+    const list = [];
     for (const [uid, l] of this.labels) {
       const o = this.items.get(uid); if (!o || hideAll) { l.el.style.opacity = 0; continue; }
       v.set(o.position.x, P + (l.it.h || 1.5) + .35, o.position.z).project(this.cam);
       const vis = v.z < 1 && v.x > -1.1 && v.x < 1.1 && v.y > -1.1 && v.y < 1.1;
       l.el.style.opacity = vis ? 1 : 0; l.el.style.pointerEvents = vis ? 'auto' : 'none';
-      l.el.style.transform = `translate(${((v.x + 1) / 2 * w).toFixed(1)}px, ${((1 - v.y) / 2 * h).toFixed(1)}px) translate(-50%, -100%)`;
-      l.el.classList.toggle('is-sel', uid === this.selected);
+      if (!vis) continue;
+      if (!l.w) { l.w = l.el.offsetWidth || 120; l.h = l.el.offsetHeight || 26; }
+      list.push({ l, uid, x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h, z: v.z });
+    }
+    list.sort((a, b) => b.y - a.y);
+    const placed = [];
+    for (const it of list) {
+      let y = it.y;
+      for (let k = 0; k < 6; k++) {
+        const hitL = placed.find(p => Math.abs(p.x - it.x) < (p.w + it.l.w) / 2 + 4 && Math.abs(p.y - y) < (p.h + it.l.h) / 2 + 2);
+        if (!hitL) break;
+        y = hitL.y - (hitL.h + it.l.h) / 2 - 3;
+      }
+      placed.push({ x: it.x, y, w: it.l.w, h: it.l.h });
+      it.l.el.style.transform = `translate(${it.x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+      it.l.el.classList.toggle('is-sel', it.uid === this.selected);
     }
   }
   facePhotos() {

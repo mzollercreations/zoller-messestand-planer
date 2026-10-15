@@ -129,6 +129,13 @@ export class Assistant {
       }
       case 'extras': {
         const d = defaultExtras(A);
+        // Vorschlag an die Fläche anpassen: bei vielen Geräten zuerst Lounge, Sitzgruppen, Infostele, Stehtische … weglassen
+        for (const k of ['lounge', 'meeting', 'infostele', 'bartable', 'bartable', 'brochure', 'cabin', 'bartable', 'mediawall']) {
+          if (estimateArea({ ...p, extras: d }) <= A * 1.02) break;
+          if (k === 'bartable' && d.bartable <= 1) continue;
+          if (k === 'brochure' && d.brochure <= 1) continue;
+          if (d[k] > 0) d[k]--;
+        }
         p.extras = { ...d, ...(p.extrasTouched ? p.extras : {}) };
         this.say(this.L('Was brauchen Sie **außer den Geräten**? Ich habe einen Vorschlag für die Fläche vorbereitet – einfach anpassen.',
           'What do you need **besides the devices**? I prepared a suggestion for the space – just adjust it.'), { step: k, widget: { type: 'extras' } });
