@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ZOLLER Messestand-Planer</title>
+<meta name="description" content="Messestände für ZOLLER planen: Assistent, 3D-Stand mit den offiziellen CAD-Modellen, Begehung wie ein Besucher, Grundriss und PDF.">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="assets/img/favicon.ico">
+<link rel="stylesheet" href="assets/css/app.css?v=d19a9f52">
+<script type="importmap">{"imports": {"three": "./assets/vendor/three.module.min.js", "./assets/js/assistant.js": "./assets/js/assistant.js?v=d19a9f52", "./assets/js/booth3d.js": "./assets/js/booth3d.js?v=d19a9f52", "./assets/js/catalog.js": "./assets/js/catalog.js?v=d19a9f52", "./assets/js/graphics.js": "./assets/js/graphics.js?v=d19a9f52", "./assets/js/i18n.js": "./assets/js/i18n.js?v=d19a9f52", "./assets/js/layout.js": "./assets/js/layout.js?v=d19a9f52", "./assets/js/lists.js": "./assets/js/lists.js?v=d19a9f52", "./assets/js/nlu.js": "./assets/js/nlu.js?v=d19a9f52", "./assets/js/path.js": "./assets/js/path.js?v=d19a9f52", "./assets/js/pdf.js": "./assets/js/pdf.js?v=d19a9f52", "./assets/js/plan2d.js": "./assets/js/plan2d.js?v=d19a9f52"}}</script>
+<script src="assets/vendor/jspdf.umd.min.js" defer></script>
+</head>
+<body>
+<div class="app" data-tab="3d">
+  <header class="bar">
+    <a class="bar__logo" href="./" aria-label="ZOLLER"><img src="assets/img/zoller-white.svg" alt="ZOLLER" width="110" height="25"></a>
+    <div class="bar__title"><span data-i18n="app.title">Messestand-Planer</span><input class="bar__name" data-name type="text" spellcheck="false" aria-label="Name der Planung"></div>
+    <nav class="tabs" role="tablist">
+      <button type="button" data-tab="chat" class="tabs__chat"><span data-i18n="tab.chat">Assistent</span></button>
+      <button type="button" data-tab="3d" class="is-on"><span data-i18n="tab.3d">3D-Stand</span></button>
+      <button type="button" data-tab="plan"><span data-i18n="tab.plan">Grundriss</span></button>
+      <button type="button" data-tab="lists"><span data-i18n="tab.lists">Planung</span></button>
+    </nav>
+    <div class="bar__tools">
+      <button type="button" class="ibtn" data-act="projects" data-i18n-title="btn.projects" title="Planungen"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></svg></button>
+      <button type="button" class="ibtn" data-act="share" data-i18n-title="btn.share" title="Link kopieren"><svg viewBox="0 0 24 24"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></button>
+      <select class="langsel" data-lang aria-label="Sprache"><option value="de">DE</option><option value="en">EN</option></select>
+      <button type="button" class="btn btn--yellow" data-act="pdf"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v15H6zM14 2v6h6M9 13h6M9 17h6"/></svg><span data-i18n="btn.pdf">PDF erstellen</span></button>
+    </div>
+  </header>
+
+  <main class="main">
+    <aside class="chat" aria-label="Assistent">
+      <div class="chat__head">
+        <span class="chat__avatar"><img src="assets/img/mark.svg" alt=""></span>
+        <div><b data-i18n="chat.name">Messe-Assistent</b><small data-chat-status></small></div>
+        <button type="button" class="chat__new" data-act="new" data-i18n-title="btn.new" title="Neue Planung"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+      </div>
+      <div class="chat__log" data-log aria-live="polite"></div>
+      <form class="chat__input" data-form autocomplete="off">
+        <textarea data-input rows="1" data-i18n-ph="chat.ph" placeholder="Nachricht an den Assistenten …"></textarea>
+        <button type="submit" class="chat__send" data-i18n-title="btn.send" title="Senden"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg></button>
+      </form>
+    </aside>
+
+    <section class="work">
+      <!-- 3D -->
+      <div class="pane pane--3d" data-pane="3d">
+        <div class="stage" data-stage>
+          <canvas tabindex="0"></canvas>
+          <div class="labels" data-labels></div>
+        </div>
+        <div class="hud">
+          <div class="seg" data-views>
+            <button type="button" data-view="overview" class="is-on" data-i18n="view.overview">Übersicht</button>
+            <button type="button" data-view="front" data-i18n="view.front">Vom Gang</button>
+            <button type="button" data-view="top" data-i18n="view.top">Vogelperspektive</button>
+            <button type="button" data-view="walk" data-i18n="view.walk">Begehen</button>
+          </div>
+          <div class="hud__right">
+            <button type="button" class="pill pill--dark" data-view="tour"><svg viewBox="0 0 24 24"><path d="M7 4l13 8-13 8z"/></svg><span data-i18n="view.tour">Rundgang</span></button>
+            <button type="button" class="pill toggle is-on" data-toggle="labels" data-i18n="view.labels">Namen</button>
+            <button type="button" class="pill toggle is-on" data-toggle="people" data-i18n="view.people">Besucher</button>
+            <button type="button" class="pill" data-act="photo" data-i18n-title="view.photo" title="Bild sichern"><svg viewBox="0 0 24 24"><path d="M4 7h4l2-3h4l2 3h4v13H4z"/><circle cx="12" cy="13" r="4"/></svg></button>
+          </div>
+        </div>
+        <div class="walkui" data-walkui hidden>
+          <div class="walkui__hint" data-walkhint></div>
+          <div class="walkui__cap" data-tourcap hidden></div>
+          <button type="button" class="pill pill--dark walkui__exit" data-act="exitwalk"><span data-walkexit></span></button>
+          <div class="joy" data-joy><i></i></div>
+        </div>
+        <div class="empty" data-empty>
+          <img src="assets/img/mark.svg" alt="">
+          <h2 data-i18n="empty.title">Ihr Messestand entsteht hier</h2>
+          <p data-i18n="empty.text"></p>
+        </div>
+        <div class="selbar" data-selbar hidden></div>
+        <div class="toast" data-toast hidden></div>
+      </div>
+      <!-- Grundriss -->
+      <div class="pane pane--plan" data-pane="plan" hidden>
+        <div class="planbar">
+          <label class="chk"><input type="checkbox" data-layer="dims" checked><span data-i18n="plan.layer.dims">Maße</span></label>
+          <label class="chk"><input type="checkbox" data-layer="zones" checked><span data-i18n="plan.layer.zones">Bedienbereiche</span></label>
+          <label class="chk"><input type="checkbox" data-layer="hang" checked><span data-i18n="plan.layer.hang">Abhängungen</span></label>
+          <label class="chk"><input type="checkbox" data-layer="conn"><span data-i18n="plan.layer.conn">Anschlüsse</span></label>
+          <span class="planbar__hint" data-i18n="plan.hint"></span>
+          <button type="button" class="pill" data-act="relayout"><span data-i18n="btn.relayout">Neu anordnen</span></button>
+        </div>
+        <div class="planview" data-planview></div>
+        <div class="planlegend" data-planlegend></div>
+        <div class="selbar" data-selbar2 hidden></div>
+      </div>
+      <!-- Listen -->
+      <div class="pane pane--lists" data-pane="lists" hidden>
+        <div class="lists" data-lists></div>
+      </div>
+    </section>
+  </main>
+
+  <div class="overlay" data-overlay hidden><div class="overlay__box" data-overlaybox></div></div>
+</div>
+<script type="module" src="assets/js/app.js?v=d19a9f52"></script>
+</body>
+</html>

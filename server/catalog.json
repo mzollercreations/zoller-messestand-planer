@@ -1,0 +1,303 @@
+{
+ "devices": {
+  "venturion": {
+   "name": "venturion 450",
+   "topic": "measure",
+   "foot": [
+    2.32,
+    0.85
+   ],
+   "cad": true
+  },
+  "venturion600": {
+   "name": "venturion 600",
+   "topic": "measure",
+   "foot": [
+    2.27,
+    0.88
+   ],
+   "cad": true
+  },
+  "venturion800": {
+   "name": "venturion 800",
+   "topic": "measure",
+   "foot": [
+    2.62,
+    0.88
+   ],
+   "cad": true
+  },
+  "smile": {
+   "name": "smile",
+   "topic": "measure",
+   "foot": [
+    1.88,
+    0.67
+   ],
+   "cad": true
+  },
+  "hyperion": {
+   "name": "hyperion",
+   "topic": "measure",
+   "foot": [
+    2.2,
+    1.1
+   ],
+   "cad": false
+  },
+  "powershrink400": {
+   "name": "powerShrink 400",
+   "topic": "shrink",
+   "foot": [
+    1.07,
+    0.64
+   ],
+   "cad": true
+  },
+  "redomatic600": {
+   "name": "redomatic 600",
+   "topic": "shrink",
+   "foot": [
+    3.55,
+    1.91
+   ],
+   "cad": true
+  },
+  "toolbalancer": {
+   "name": "toolBalancer 550",
+   "topic": "balance",
+   "foot": [
+    1.54,
+    2.02
+   ],
+   "cad": true
+  },
+  "keeper": {
+   "name": "keeper",
+   "topic": "tms",
+   "foot": [
+    1.81,
+    1.51
+   ],
+   "cad": true
+  },
+  "toolorganizer": {
+   "name": "toolOrganizer",
+   "topic": "tms",
+   "foot": [
+    0.8,
+    0.79
+   ],
+   "cad": true
+  },
+  "toolstation": {
+   "name": "toolStation",
+   "topic": "tms",
+   "foot": [
+    2.45,
+    0.86
+   ],
+   "cad": true
+  },
+  "toolcart": {
+   "name": "toolCart 750",
+   "topic": "tms",
+   "foot": [
+    0.92,
+    0.56
+   ],
+   "cad": true
+  },
+  "zidcode": {
+   "name": "zidCode 4.0",
+   "topic": "tms",
+   "foot": [
+    0.45,
+    0.5
+   ],
+   "cad": true
+  },
+  "twister": {
+   "name": "twister",
+   "topic": "tms",
+   "foot": [
+    0.8,
+    0.97
+   ],
+   "cad": false
+  },
+  "autolock": {
+   "name": "autoLock",
+   "topic": "tms",
+   "foot": [
+    1,
+    1.05
+   ],
+   "cad": false
+  },
+  "ztower": {
+   "name": "zTower",
+   "topic": "tms",
+   "foot": [
+    1.49,
+    0.9
+   ],
+   "cad": false
+  },
+  "robobox": {
+   "name": "roboBox",
+   "topic": "automation",
+   "foot": [
+    2.94,
+    3.4
+   ],
+   "cad": false
+  },
+  "corameasure": {
+   "name": "coraMeasure LG",
+   "topic": "automation",
+   "foot": [
+    3.15,
+    1.79
+   ],
+   "cad": false
+  },
+  "micbox": {
+   "name": "micBox",
+   "topic": "automation",
+   "foot": [
+    2.4,
+    2
+   ],
+   "cad": false
+  },
+  "loadbox": {
+   "name": "loadBox",
+   "topic": "automation",
+   "foot": [
+    3.64,
+    3.4
+   ],
+   "cad": false
+  },
+  "coramachineload": {
+   "name": "coraMachineLoad",
+   "topic": "automation",
+   "foot": [
+    2.6,
+    1.6
+   ],
+   "cad": false
+  },
+  "coralogistic": {
+   "name": "coraLogistic",
+   "topic": "automation",
+   "foot": [
+    1.6,
+    1
+   ],
+   "cad": false
+  },
+  "roboset2": {
+   "name": "roboSet 2",
+   "topic": "inspect",
+   "foot": [
+    2.6,
+    2.2
+   ],
+   "cad": false
+  },
+  "genius": {
+   "name": "genius",
+   "topic": "inspect",
+   "foot": [
+    1.3,
+    1.3
+   ],
+   "cad": false
+  },
+  "titan": {
+   "name": "titan",
+   "topic": "inspect",
+   "foot": [
+    1.4,
+    1.4
+   ],
+   "cad": false
+  },
+  "hobcheck": {
+   "name": "hobCheck",
+   "topic": "inspect",
+   "foot": [
+    2,
+    1.4
+   ],
+   "cad": false
+  },
+  "smartcheck": {
+   "name": "smartCheck",
+   "topic": "inspect",
+   "foot": [
+    2,
+    1.1
+   ],
+   "cad": false
+  },
+  "pombasic": {
+   "name": "pomBasic",
+   "topic": "inspect",
+   "foot": [
+    1.2,
+    0.8
+   ],
+   "cad": false
+  },
+  "tmsdemo": {
+   "name": "TMS Tool Management Solutions",
+   "topic": "software",
+   "foot": [
+    1.6,
+    0.9
+   ],
+   "cad": false
+  },
+  "myzoller": {
+   "name": "MYZOLLER",
+   "topic": "software",
+   "foot": [
+    1.6,
+    0.9
+   ],
+   "cad": false
+  }
+ },
+ "extras": {
+  "counter": "Reception counter",
+  "bartable": "High table with 3 bar stools",
+  "meeting": "Seating group (table + 4 chairs)",
+  "cabin": "Meeting room (glass)",
+  "storage": "Storage / kitchen",
+  "lounge": "Lounge",
+  "mediawall": "LED wall",
+  "brochure": "Brochure stand",
+  "infostele": "Touch info kiosk"
+ },
+ "signage": {
+  "banner": "Hanging banner (square, LED edge)",
+  "topics": "Topic cubes above the areas",
+  "products": "Product sign at every device",
+  "wall": "Wall graphic »Start with a solution – Enter a system«",
+  "cycle": "Tool cycle wall with the devices",
+  "floor": "Floor logo in the aisle",
+  "standno": "Booth number sign"
+ },
+ "topics": {
+  "tms": "Tool Management",
+  "shrink": "Tool Heat Shrink Technology",
+  "balance": "Tool Balancing Technology",
+  "measure": "Presetting & Measuring",
+  "automation": "Automation",
+  "inspect": "Inspection & Measuring",
+  "software": "Software & Portal"
+ }
+}

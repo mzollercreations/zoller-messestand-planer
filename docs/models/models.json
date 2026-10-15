@@ -1,0 +1,410 @@
+{
+ "venturion": {
+  "id": "venturion",
+  "file": "models/venturion.glb",
+  "screen": "models/tex/screen_pilot4_measure.webp",
+  "size": [
+   2.317,
+   1.944,
+   0.846
+  ],
+  "tris": 30716,
+  "classes": [
+   "anodized",
+   "bellows",
+   "blackoxide",
+   "blackplastic",
+   "brass",
+   "chrome",
+   "darkgrey",
+   "glossblack",
+   "paper",
+   "red",
+   "screen",
+   "steel",
+   "teal",
+   "whitealu",
+   "whiteplastic",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/venturion.usdc",
+   "tex": [
+    "ar/tex/screen_pilot4_measure.png"
+   ],
+   "tris": 48768
+  }
+ },
+ "zidcode": {
+  "id": "zidcode",
+  "file": "models/zidcode.glb",
+  "screen": "models/tex/screen_zid_scan.webp",
+  "size": [
+   0.402,
+   1.422,
+   0.489
+  ],
+  "tris": 59375,
+  "classes": [
+   "blackoxide",
+   "blackplastic",
+   "darkgrey",
+   "paper",
+   "screen",
+   "whitealu",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/zidcode.usdc",
+   "tex": [
+    "ar/tex/screen_zid_scan.png"
+   ],
+   "tris": 26762
+  }
+ },
+ "venturion600": {
+  "id": "venturion600",
+  "file": "models/venturion600.glb",
+  "screen": "models/tex/screen_pilot4_measure.webp",
+  "size": [
+   2.273,
+   1.932,
+   0.876
+  ],
+  "tris": 31335,
+  "classes": [
+   "anodized",
+   "bellows",
+   "blackoxide",
+   "blackplastic",
+   "brass",
+   "chrome",
+   "darkgrey",
+   "glossblack",
+   "paper",
+   "red",
+   "screen",
+   "steel",
+   "teal",
+   "whitealu",
+   "whiteplastic",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/venturion600.usdc",
+   "tex": [
+    "ar/tex/screen_pilot4_measure.png"
+   ],
+   "tris": 49202
+  }
+ },
+ "venturion800": {
+  "id": "venturion800",
+  "file": "models/venturion800.glb",
+  "screen": "models/tex/screen_pilot4_measure.webp",
+  "size": [
+   2.616,
+   2.128,
+   0.876
+  ],
+  "tris": 35231,
+  "classes": [
+   "anodized",
+   "bellows",
+   "blackoxide",
+   "blackplastic",
+   "brass",
+   "chrome",
+   "darkgrey",
+   "glossblack",
+   "paper",
+   "red",
+   "screen",
+   "steel",
+   "teal",
+   "whitealu",
+   "whiteplastic",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/venturion800.usdc",
+   "tex": [
+    "ar/tex/screen_pilot4_measure.png"
+   ],
+   "tris": 49798
+  }
+ },
+ "smile": {
+  "id": "smile",
+  "file": "models/smile.glb",
+  "screen": "models/tex/screen_pilot4_contour.webp",
+  "size": [
+   1.881,
+   1.724,
+   0.667
+  ],
+  "tris": 45793,
+  "classes": [
+   "anodized",
+   "bellows",
+   "blackoxide",
+   "blackplastic",
+   "chrome",
+   "darkgrey",
+   "glossblack",
+   "pa6",
+   "paper",
+   "red",
+   "screen",
+   "steel",
+   "teal",
+   "whitealu",
+   "whiteplastic",
+   "yellow",
+   "zinc"
+  ],
+  "ar": {
+   "file": "ar/smile.usdc",
+   "tex": [
+    "ar/tex/screen_pilot4_contour.png"
+   ],
+   "tris": 48270
+  }
+ },
+ "keeper": {
+  "id": "keeper",
+  "file": "models/keeper.glb",
+  "screen": "models/tex/screen_tms_keeper.webp",
+  "size": [
+   1.813,
+   2.1,
+   1.507
+  ],
+  "tris": 79654,
+  "classes": [
+   "anodized",
+   "blackplastic",
+   "blue",
+   "darkgrey",
+   "pa6",
+   "screen",
+   "whitealu",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/keeper.usdc",
+   "tex": [
+    "ar/tex/screen_tms_keeper.png"
+   ],
+   "tris": 101084
+  }
+ },
+ "toolorganizer": {
+  "id": "toolorganizer",
+  "file": "models/toolorganizer.glb",
+  "screen": "models/tex/screen_tms_organizer.webp",
+  "size": [
+   0.8,
+   1.731,
+   0.789
+  ],
+  "tris": 76090,
+  "classes": [
+   "anodized",
+   "blackplastic",
+   "darkgrey",
+   "screen",
+   "steel",
+   "whitealu"
+  ],
+  "ar": {
+   "file": "ar/toolorganizer.usdc",
+   "tex": [
+    "ar/tex/screen_tms_organizer.png"
+   ],
+   "tris": 103714
+  }
+ },
+ "toolstation": {
+  "id": "toolstation",
+  "file": "models/toolstation.glb",
+  "screen": "models/tex/screen_tms_station.webp",
+  "size": [
+   2.445,
+   2.097,
+   0.862
+  ],
+  "tris": 134921,
+  "classes": [
+   "anodized",
+   "blackplastic",
+   "darkgrey",
+   "screen",
+   "steel",
+   "whitealu",
+   "whiteplastic",
+   "wood",
+   "worktop",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/toolstation.usdc",
+   "tex": [
+    "ar/tex/screen_tms_station.png"
+   ],
+   "tris": 149260
+  }
+ },
+ "redomatic600": {
+  "id": "redomatic600",
+  "file": "models/redomatic600.glb",
+  "screen": "models/tex/screen_pilot4_measure.webp",
+  "size": [
+   3.548,
+   1.971,
+   1.906
+  ],
+  "tris": 90932,
+  "classes": [
+   "anodized",
+   "bellows",
+   "blackoxide",
+   "blackplastic",
+   "blue",
+   "brass",
+   "chrome",
+   "darkgrey",
+   "glossblack",
+   "led",
+   "paper",
+   "red",
+   "screen",
+   "steel",
+   "teal",
+   "whitealu",
+   "whiteplastic",
+   "worktop",
+   "yellow",
+   "zinc"
+  ],
+  "ar": {
+   "file": "ar/redomatic600.usdc",
+   "tex": [
+    "ar/tex/screen_pilot4_measure.png"
+   ],
+   "tris": 96772
+  }
+ },
+ "powershrink400": {
+  "id": "powershrink400",
+  "file": "models/powershrink400.glb",
+  "screen": "models/tex/screen_pilot4_contour.webp",
+  "size": [
+   1.073,
+   1.757,
+   0.644
+  ],
+  "tris": 47085,
+  "classes": [
+   "anodized",
+   "bellows",
+   "blackplastic",
+   "darkgrey",
+   "glossblack",
+   "led",
+   "red",
+   "steel",
+   "whitealu",
+   "whiteplastic",
+   "worktop",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/powershrink400.usdc",
+   "tex": [],
+   "tris": 41634
+  }
+ },
+ "toolbalancer": {
+  "id": "toolbalancer",
+  "file": "models/toolbalancer.glb",
+  "screen": "models/tex/screen_pilot4_contour.webp",
+  "size": [
+   1.543,
+   1.726,
+   2.016
+  ],
+  "tris": 80242,
+  "classes": [
+   "bellows",
+   "blackplastic",
+   "chrome",
+   "darkgrey",
+   "glossblack",
+   "pa6",
+   "paper",
+   "red",
+   "screen",
+   "steel",
+   "teal",
+   "whitealu",
+   "whiteplastic",
+   "wood",
+   "yellow",
+   "zinc"
+  ],
+  "ar": {
+   "file": "ar/toolbalancer.usdc",
+   "tex": [
+    "ar/tex/screen_pilot4_contour.png"
+   ],
+   "tris": 68248
+  }
+ },
+ "zidcode_lo": {
+  "id": "zidcode_lo",
+  "file": "models/zidcode_lo.glb",
+  "screen": "models/tex/screen_zid_scan.webp",
+  "size": [
+   0.402,
+   1.422,
+   0.489
+  ],
+  "tris": 13381,
+  "classes": [
+   "blackoxide",
+   "blackplastic",
+   "darkgrey",
+   "paper",
+   "screen",
+   "whitealu",
+   "yellow"
+  ]
+ },
+ "toolcart": {
+  "id": "toolcart",
+  "file": "models/toolcart.glb",
+  "screen": null,
+  "size": [
+   0.919,
+   0.971,
+   0.564
+  ],
+  "tris": 69996,
+  "classes": [
+   "bellows",
+   "blackplastic",
+   "brushed",
+   "darkgrey",
+   "glossblack",
+   "steel",
+   "worktop",
+   "yellow"
+  ],
+  "ar": {
+   "file": "ar/toolcart.usdc",
+   "tex": [],
+   "tris": 93044
+  }
+ }
+}

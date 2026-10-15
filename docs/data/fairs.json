@@ -1,0 +1,92 @@
+[
+ {
+  "id": "siane-2026",
+  "title": "SIANE",
+  "city": "Toulouse",
+  "country": "France",
+  "start": "2026-10-13",
+  "end": "2026-10-15",
+  "website": "https://www.salonsiane.com/"
+ },
+ {
+  "id": "bi-mu-2026",
+  "title": "BI-MU",
+  "city": "Mailand",
+  "country": "Italy",
+  "start": "2026-10-13",
+  "end": "2026-10-16",
+  "website": "https://www.bimu.it/en/"
+ },
+ {
+  "id": "metalex-2026",
+  "title": "METALEX",
+  "city": "Bangkok",
+  "country": "Thailand",
+  "start": "2026-11-18",
+  "end": "2026-11-21",
+  "website": "https://www.metalex.co.th/"
+ },
+ {
+  "id": "imtex-2027",
+  "title": "IMTEX",
+  "city": "Bengaluru",
+  "country": "India",
+  "start": "2027-01-21",
+  "end": "2027-01-27",
+  "website": "https://www.imtex.in/"
+ },
+ {
+  "id": "intec-2027",
+  "title": "Intec",
+  "city": "Leipzig",
+  "country": "Germany",
+  "start": "2027-03-02",
+  "end": "2027-03-05",
+  "website": "https://www.messe-intec.de/"
+ },
+ {
+  "id": "global-industrie-2027",
+  "title": "Global Industrie",
+  "city": "Lyon",
+  "country": "France",
+  "start": "2027-03-15",
+  "end": "2027-03-18",
+  "website": "https://www.global-industrie.com/en"
+ },
+ {
+  "id": "dst-2027",
+  "title": "DST Dreh- und Spantage Südwest",
+  "city": "Villingen-Schwenningen",
+  "country": "Germany",
+  "start": "2027-04-07",
+  "end": "2027-04-09",
+  "website": "https://www.dstsuedwest.de/home"
+ },
+ {
+  "id": "grindinghub-americas-2027",
+  "title": "GrindingHub Americas 2027",
+  "city": "Cincinnati, Ohio",
+  "country": "United States",
+  "start": "2027-05-18",
+  "end": "2027-05-20",
+  "website": "https://www.grindinghub-americas.com/gha27"
+ },
+ {
+  "id": "gifa-2027",
+  "title": "GIFA",
+  "city": "Düsseldorf",
+  "country": "Germany",
+  "start": "2027-06-21",
+  "end": "2027-06-25",
+  "website": "https://www.gifa.com/"
+ },
+ {
+  "id": "surfex-2027",
+  "title": "SURFEX SHOW 2027",
+  "city": "Indianapolis, Indiana",
+  "country": "United States",
+  "start": "2027-11-03",
+  "end": "2027-11-05",
+  "website": "https://surfexshow.com/"
+ }
+]
