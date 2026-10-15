@@ -197,19 +197,49 @@ function renderChat() {
   msgs.forEach((m, i) => { if (!m.id) m.id = 'm' + i; });
   const lastBot = [...msgs].reverse().find(m => m.role === 'bot');
   const lastWidget = [...msgs].reverse().find(m => m.widget);
+  const isNew = new Set(msgs.filter(m => !S.seenMsgs.has(m.id)).map(m => m.id));
   const html = msgs.map(m => {
     const fresh = !S.seenMsgs.has(m.id) ? ' is-new' : ''; S.seenMsgs.add(m.id);
-    if (m.role === 'user') return `<div class="msg msg--user${fresh}">${esc(m.text)}</div>`;
+    if (m.role === 'user') return `<div class="msg msg--user${fresh}" data-mid="${m.id}">${esc(m.text)}</div>`;
     const active = m === lastBot || (m === lastWidget && !widgetDone(m));
     const chips = m.chips && m.chips.length ? `<div class="chips">${m.chips.map((c, i) => `<button type="button" class="chip${c.primary ? ' chip--primary' : ''}" data-chip="${m.id}:${i}">${c.icon ? `<i>${typeIcon(c.icon)}</i>` : ''}${esc(c.label)}</button>`).join('')}</div>` : '';
     const w = m.widget ? widgetHtml(m) : '';
     return `<div class="msg msg--bot${active ? '' : ' is-old'}${fresh}" data-mid="${m.id}"><div class="msg__text">${mdl(m.text)}</div>${w}${active ? chips : ''}</div>`;
   }).join('');
-  const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  const st = log.scrollTop, atBottom = log.scrollHeight - st - log.clientHeight < 80;
   log.innerHTML = html + (S.busy ? '<div class="typing" aria-label="…"><i></i><i></i><i></i></div>' : '');
-  if (S.busy) S.forceScroll = true;
-  if (atBottom || S.forceScroll) { log.scrollTop = log.scrollHeight; S.forceScroll = false; }
+  // Scrollen: Eine neue Antwort wird ab ihrem Anfang gezeigt (mit der kurzen Frage davor), nicht ans Ende gesprungen –
+  // lange Antworten müsste man sonst erst wieder hochscrollen. Ans Ende geht es über den Pfeil über dem Eingabefeld.
+  let lastUser = -1;
+  msgs.forEach((m, i) => { if (m.role === 'user') lastUser = i; });
+  const b = msgs.findIndex((m, i) => i > lastUser && m.role === 'bot' && isNew.has(m.id));
+  if (b >= 0 && !S.toEnd && (S.forceScroll || atBottom || S.anchor)) {
+    if (!S.anchor) {   // mehrere Bot-Nachrichten im selben Durchlauf (Antwort + nächste Frage) teilen sich den Anfang
+      const q = msgs[b - 1], qe = q && q.role === 'user' && $(`[data-mid="${q.id}"]`, log);
+      S.anchor = qe && qe.offsetHeight < log.clientHeight * .35 ? q.id : msgs[b].id;
+      setTimeout(() => { S.anchor = null; });
+    }
+    const el = $(`[data-mid="${S.anchor}"]`, log);
+    log.scrollTop = st;
+    S.followUntil = performance.now() + 900;
+    glide(log, el ? Math.min(topIn(el, log) - 12, log.scrollHeight - log.clientHeight) : log.scrollHeight);
+  } else if (performance.now() > (S.followUntil || 0)) {   // nicht in ein laufendes Hinscrollen fahren
+    log.scrollTop = S.toEnd || S.busy || S.forceScroll || atBottom ? log.scrollHeight : st;
+  }
+  S.forceScroll = false;
+  if (log.clientHeight) S.toEnd = false;   // Chat verdeckt (Handy, anderer Tab): ans Ende, sobald er sichtbar wird
+  updJump();
 }
+// Abstand eines Elements vom Inhaltsanfang des Scrollbereichs (Layoutmaß, unabhängig von Einblend-Animationen)
+function topIn(el, box) { let y = 0; for (let x = el; x && x !== box; x = x.offsetParent) y += x.offsetTop; return y; }
+// sanft scrollen; in einem verdeckten Tab läuft keine Animation, dann sofort
+function glide(box, top) { if (document.hidden) box.scrollTop = top; else box.scrollTo({ top, behavior: 'smooth' }); }
+function updJump() {
+  const log = $('[data-log]');
+  $('[data-jump]').classList.toggle('is-on', log.scrollHeight - log.scrollTop - log.clientHeight > 48);
+}
+$('[data-log]').addEventListener('scroll', updJump, { passive: true });
+$('[data-jump]').addEventListener('click', () => { const log = $('[data-log]'); glide(log, log.scrollHeight); });
 function widgetDone(m) {
   const a = S.plan.asked || {};
   return { devices: a.devices, extras: a.extras, signage: a.signage, live: a.live }[m.widget.type];
@@ -306,6 +336,7 @@ function setTab(x) {
   if (x === 'plan') renderPlan();
   if (x === 'lists') renderLists();
   if (x === '3d' || x === 'chat') booth.resize();
+  if (x === 'chat') { const log = $('[data-log]'); if (S.toEnd) { log.scrollTop = log.scrollHeight; S.toEnd = false; } updJump(); }
   if (x !== '3d' && booth.mode === 'walk') setView('overview');
 }
 $$('.tabs button').forEach(b => b.addEventListener('click', () => setTab(b.dataset.tab)));
@@ -606,6 +637,7 @@ function applyLang(l) {
   $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
   $$('[data-i18n-title]').forEach(el => { el.title = t(el.dataset.i18nTitle); });
   $$('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  $$('[data-i18n-aria]').forEach(el => { el.setAttribute('aria-label', t(el.dataset.i18nAria)); });
   if (booth) booth.lang = l;
 }
 $('[data-lang]').addEventListener('change', (e) => { applyLang(e.target.value); if (S.plan) { S.plan.lang = lang(); relayout(); renderChat(); } });
@@ -638,6 +670,6 @@ window.ZMSP = { S, booth, assistant, solve, effPlan, moveItem, select, removeIte
   if (!plan) plan = blankPlan();
   openPlan(plan);
   if (m && plan.generated) assistant.say(lang() === 'en' ? 'Shared plan opened. Tell me what to change – or create the PDF.' : 'Geteilte Planung geöffnet. Sagen Sie mir, was sich ändern soll – oder erstellen Sie das PDF.', { chips: assistant.doneChips() });
-  S.forceScroll = true; renderChat();
+  S.toEnd = true; renderChat();
   if (window.innerWidth <= 900 && !plan.generated) setTab('chat');
 })();

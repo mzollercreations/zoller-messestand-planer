@@ -8,8 +8,8 @@
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#000000">
 <link rel="icon" href="assets/img/favicon.ico">
-<link rel="stylesheet" href="assets/css/app.css?v=f6413378">
-<script type="importmap">{"imports": {"three": "./assets/vendor/three.module.min.js", "./assets/js/assistant.js": "./assets/js/assistant.js?v=f6413378", "./assets/js/booth3d.js": "./assets/js/booth3d.js?v=f6413378", "./assets/js/catalog.js": "./assets/js/catalog.js?v=f6413378", "./assets/js/graphics.js": "./assets/js/graphics.js?v=f6413378", "./assets/js/i18n.js": "./assets/js/i18n.js?v=f6413378", "./assets/js/layout.js": "./assets/js/layout.js?v=f6413378", "./assets/js/lists.js": "./assets/js/lists.js?v=f6413378", "./assets/js/nlu.js": "./assets/js/nlu.js?v=f6413378", "./assets/js/path.js": "./assets/js/path.js?v=f6413378", "./assets/js/pdf.js": "./assets/js/pdf.js?v=f6413378", "./assets/js/plan2d.js": "./assets/js/plan2d.js?v=f6413378"}}</script>
+<link rel="stylesheet" href="assets/css/app.css?v=81a27cea">
+<script type="importmap">{"imports": {"three": "./assets/vendor/three.module.min.js", "./assets/js/assistant.js": "./assets/js/assistant.js?v=81a27cea", "./assets/js/booth3d.js": "./assets/js/booth3d.js?v=81a27cea", "./assets/js/catalog.js": "./assets/js/catalog.js?v=81a27cea", "./assets/js/graphics.js": "./assets/js/graphics.js?v=81a27cea", "./assets/js/i18n.js": "./assets/js/i18n.js?v=81a27cea", "./assets/js/layout.js": "./assets/js/layout.js?v=81a27cea", "./assets/js/lists.js": "./assets/js/lists.js?v=81a27cea", "./assets/js/nlu.js": "./assets/js/nlu.js?v=81a27cea", "./assets/js/path.js": "./assets/js/path.js?v=81a27cea", "./assets/js/pdf.js": "./assets/js/pdf.js?v=81a27cea", "./assets/js/plan2d.js": "./assets/js/plan2d.js?v=81a27cea"}}</script>
 <script src="assets/vendor/jspdf.umd.min.js" defer></script>
 </head>
 <body>
@@ -40,6 +40,7 @@
       </div>
       <div class="chat__log" data-log aria-live="polite"></div>
       <form class="chat__input" data-form autocomplete="off">
+        <button type="button" class="chat__jump" data-jump data-i18n-title="chat.end" data-i18n-aria="chat.end" title="Zum Ende des Chats" aria-label="Zum Ende des Chats"><svg viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
         <textarea data-input rows="1" data-i18n-ph="chat.ph" placeholder="Nachricht an den Assistenten …"></textarea>
         <button type="submit" class="chat__send" data-i18n-title="btn.send" title="Senden"><svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2-7z"/></svg></button>
       </form>
@@ -103,6 +104,6 @@
 
   <div class="overlay" data-overlay hidden><div class="overlay__box" data-overlaybox></div></div>
 </div>
-<script type="module" src="assets/js/app.js?v=f6413378"></script>
+<script type="module" src="assets/js/app.js?v=81a27cea"></script>
 </body>
 </html>
